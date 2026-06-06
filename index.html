@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>منصة تحليل المتبرعين</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div style="min-height:100vh;display:grid;place-items:center">
+    <div class="spinner-x spinner-dark" style="width:36px;height:36px"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    (async () => {
+      const { data: { session } } = await App.sb.auth.getSession();
+      location.href = session ? 'donors.html' : 'login.html';
+    })();
+  </script>
+</body>
+</html>

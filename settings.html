@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>الإعدادات | منصة تحليل المتبرعين</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div class="app-shell" id="shell"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    let inactiveDays = 90;
+    let cats = [];
+
+    (async () => {
+      const session = await App.initShell('settings.html');
+      if (!session) return;
+      const { data } = await App.sb.from('settings').select('*').eq('id', 1).single();
+      if (data) { inactiveDays = data.inactive_days; cats = data.categories || []; }
+      renderPage();
+    })();
+
+    function renderPage() {
+      document.getElementById('mainArea').innerHTML = `
+        <div class="topbar"><h1><i class="fa-solid fa-gear text-gold"></i> الإعدادات</h1></div>
+        <div class="content">
+          <div class="row g-4" style="max-width:900px">
+            <div class="col-12">
+              <div class="panel fade-in">
+                <div class="panel-head"><h2><i class="fa-solid fa-hourglass-half"></i> مدة الخمول</h2></div>
+                <div class="panel-body">
+                  <p class="muted" style="margin-top:0">المتبرع الذي مرّ على آخر تبرع له أكثر من هذه المدة يُعتبر <strong>خاملاً</strong>، وإلا فهو <strong>مستمر</strong>.</p>
+                  <div style="max-width:240px">
+                    <label class="lbl">عدد الأيام</label>
+                    <input type="number" min="1" class="field" id="inactiveDays" value="${inactiveDays}" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="panel fade-in">
+                <div class="panel-head">
+                  <h2><i class="fa-solid fa-layer-group"></i> فئات العملاء</h2>
+                  <button class="btn-x btn-ghost btn-sm" id="addCat"><i class="fa-solid fa-plus"></i> إضافة فئة</button>
+                </div>
+                <div class="panel-body">
+                  <p class="muted" style="margin-top:0">تُحدَّد الفئة حسب <strong>عدد التبرعات</strong>. اترك "إلى" فارغًا لتعني "فأكثر".</p>
+                  <div class="table-wrap">
+                    <table class="data" style="white-space:normal">
+                      <thead><tr><th>اسم الفئة</th><th>من (عدد)</th><th>إلى (عدد)</th><th></th></tr></thead>
+                      <tbody id="catBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap">
+                <button class="btn-x" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> حفظ الإعدادات</button>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+                  <input type="checkbox" id="recalcAfter" checked />
+                  <span>إعادة احتساب ملفات المتبرعين بعد الحفظ</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+      renderCats();
+      document.getElementById('addCat').addEventListener('click', () => { cats.push({ name:'فئة جديدة', min:1, max:null }); renderCats(); });
+      document.getElementById('saveBtn').addEventListener('click', save);
+    }
+
+    function renderCats() {
+      const body = document.getElementById('catBody');
+      body.innerHTML = cats.map((c, i) => `
+        <tr>
+          <td><input class="field" data-i="${i}" data-k="name" value="${App.esc(c.name || '')}" /></td>
+          <td style="max-width:120px"><input type="number" class="field" data-i="${i}" data-k="min" value="${c.min ?? ''}" /></td>
+          <td style="max-width:120px"><input type="number" class="field" data-i="${i}" data-k="max" placeholder="فأكثر" value="${c.max ?? ''}" /></td>
+          <td><button class="btn-x btn-sm btn-danger" data-del="${i}"><i class="fa-solid fa-trash"></i></button></td>
+        </tr>`).join('');
+
+      body.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('input', (e) => {
+          const i = +e.target.dataset.i, k = e.target.dataset.k, v = e.target.value;
+          cats[i][k] = v === '' ? (k === 'name' ? '' : null) : (k === 'name' ? v : Number(v));
+        });
+      });
+      body.querySelectorAll('[data-del]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const i = +e.currentTarget.dataset.del;
+          cats.splice(i, 1); renderCats();
+        });
+      });
+    }
+
+    async function save() {
+      const btn = document.getElementById('saveBtn');
+      const days = Number(document.getElementById('inactiveDays').value) || 90;
+      const recalcAfter = document.getElementById('recalcAfter').checked;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-x"></span> جارٍ الحفظ...';
+      try {
+        const { error } = await App.sb.rpc('update_settings', { p_days: days, p_categories: cats });
+        if (error) throw error;
+        if (recalcAfter) {
+          const { error: e2 } = await App.sb.rpc('recalculate_donors');
+          if (e2) throw e2;
+          App.toast('تم حفظ الإعدادات وإعادة احتساب الملفات.', 'ok');
+        } else {
+          App.toast('تم حفظ الإعدادات.', 'ok');
+        }
+      } catch (e) {
+        App.toast(e.message || 'فشل الحفظ', 'err');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> حفظ الإعدادات';
+      }
+    }
+  </script>
+</body>
+</html>

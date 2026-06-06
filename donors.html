@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ملفات المتبرعين | منصة تحليل المتبرعين</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div class="app-shell" id="shell"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    const DAY_COLS = [
+      { key:'sat_count', label:'السبت' }, { key:'sun_count', label:'الأحد' },
+      { key:'mon_count', label:'الاثنين' }, { key:'tue_count', label:'الثلاثاء' },
+      { key:'wed_count', label:'الأربعاء' }, { key:'thu_count', label:'الخميس' },
+      { key:'fri_count', label:'الجمعة' },
+    ];
+    const PERIOD_COLS = [
+      { key:'period_morning', label:'٤ص–١١:٥٩ص' }, { key:'period_noon', label:'١٢م–٣م' },
+      { key:'period_evening', label:'٤م–٦:٥٩م' }, { key:'period_night', label:'٧م–٣:٥٩ص' },
+    ];
+
+    let page = 0, count = 0, categories = [], showAdvanced = false;
+    const f = {
+      search:'', status:'', category:'', minCount:'', maxCount:'', minTotal:'',
+      targeted:'', lastBefore:'', lastAfter:'', dayCol:'', dayMin:'', periodCol:'', periodMin:'',
+    };
+
+    (async () => {
+      const session = await App.initShell('donors.html');
+      if (!session) return;
+      const { data: s } = await App.sb.from('settings').select('categories').eq('id', 1).single();
+      categories = (s?.categories || []).map(c => c.name);
+      renderPage();
+      load(); loadKpis();
+    })();
+
+    function renderPage() {
+      const catOpts = categories.map(c => `<option value="${App.esc(c)}">${App.esc(c)}</option>`).join('');
+      const dayOpts = DAY_COLS.map(d => `<option value="${d.key}">${d.label}</option>`).join('');
+      const periodOpts = PERIOD_COLS.map(d => `<option value="${d.key}">${d.label}</option>`).join('');
+
+      document.getElementById('mainArea').innerHTML = `
+        <div class="topbar">
+          <h1><i class="fa-solid fa-users text-gold"></i> ملفات المتبرعين</h1>
+          <button class="btn-x btn-gold btn-sm" id="recalcBtn"><i class="fa-solid fa-rotate"></i> إعادة احتساب الملفات</button>
+        </div>
+        <div class="content">
+          <div class="row g-3 fade-in" style="margin-bottom:1.5rem">
+            <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-icon"><i class="fa-solid fa-user-group"></i></div><div class="kpi-label">إجمالي المتبرعين</div><div class="kpi-value" id="kpiTotal">—</div></div></div>
+            <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-icon" style="background:#dff3eb;color:var(--c-success)"><i class="fa-solid fa-heart-pulse"></i></div><div class="kpi-label">مستمرون</div><div class="kpi-value" id="kpiActive">—</div></div></div>
+            <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-icon" style="background:#f6e3e0;color:var(--c-danger)"><i class="fa-solid fa-moon"></i></div><div class="kpi-label">خاملون</div><div class="kpi-value" id="kpiInactive">—</div></div></div>
+            <div class="col-6 col-lg-3"><div class="kpi-card gold"><div class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div><div class="kpi-label">إجمالي التبرعات</div><div class="kpi-value" id="kpiSum">—</div></div></div>
+          </div>
+
+          <div class="panel fade-in" style="margin-bottom:1.5rem">
+            <div class="panel-head">
+              <h2><i class="fa-solid fa-filter"></i> الفلترة</h2>
+              <div style="display:flex;gap:.5rem">
+                <button class="btn-x btn-ghost btn-sm" id="toggleAdv"><i class="fa-solid fa-sliders"></i> فلترة متقدمة</button>
+                <button class="btn-x btn-ghost btn-sm" id="resetBtn"><i class="fa-solid fa-eraser"></i> تصفير</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="row g-2">
+                <div class="col-12 col-md-4"><label class="lbl">بحث (اسم / جوال)</label><input class="field" id="fSearch" placeholder="ابحث..." /></div>
+                <div class="col-6 col-md-4"><label class="lbl">حالة العميل</label>
+                  <select class="field" id="fStatus"><option value="">الكل</option><option value="مستمر">مستمر</option><option value="خامل">خامل</option></select></div>
+                <div class="col-6 col-md-4"><label class="lbl">فئة العميل</label>
+                  <select class="field" id="fCategory"><option value="">الكل</option>${catOpts}</select></div>
+              </div>
+              <div class="row g-2 ${showAdvanced ? '' : 'hidden'}" id="advRow" style="margin-top:.25rem">
+                <div class="col-6 col-md-3"><label class="lbl">عدد التبرعات (من)</label><input type="number" class="field" id="fMinCount" /></div>
+                <div class="col-6 col-md-3"><label class="lbl">عدد التبرعات (إلى)</label><input type="number" class="field" id="fMaxCount" /></div>
+                <div class="col-6 col-md-3"><label class="lbl">إجمالي التبرعات (أكثر من)</label><input type="number" class="field" id="fMinTotal" /></div>
+                <div class="col-6 col-md-3"><label class="lbl">الاستهداف في حملة</label>
+                  <select class="field" id="fTargeted"><option value="">الكل</option><option value="yes">تم استهدافه</option><option value="no">لم يُستهدف</option></select></div>
+                <div class="col-6 col-md-3"><label class="lbl">آخر تبرع بعد</label><input type="date" class="field" id="fLastAfter" /></div>
+                <div class="col-6 col-md-3"><label class="lbl">آخر تبرع قبل</label><input type="date" class="field" id="fLastBefore" /></div>
+                <div class="col-6 col-md-3"><label class="lbl">يوم التبرع</label>
+                  <select class="field" id="fDayCol"><option value="">—</option>${dayOpts}</select></div>
+                <div class="col-6 col-md-3"><label class="lbl">تبرّع بهذا اليوم (مرات ≥)</label><input type="number" class="field" id="fDayMin" disabled /></div>
+                <div class="col-6 col-md-3"><label class="lbl">فترة التبرع</label>
+                  <select class="field" id="fPeriodCol"><option value="">—</option>${periodOpts}</select></div>
+                <div class="col-6 col-md-3"><label class="lbl">تبرّع بهذه الفترة (مرات ≥)</label><input type="number" class="field" id="fPeriodMin" disabled /></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel fade-in">
+            <div class="panel-head"><h2>المتبرعون <span class="muted" id="cnt" style="font-size:.9rem;font-weight:400"></span></h2></div>
+            <div class="panel-body"><div id="tableArea"></div></div>
+          </div>
+        </div>`;
+
+      wireControls();
+    }
+
+    function wireControls() {
+      document.getElementById('recalcBtn').addEventListener('click', recalc);
+      document.getElementById('toggleAdv').addEventListener('click', () => {
+        showAdvanced = !showAdvanced;
+        document.getElementById('advRow').classList.toggle('hidden', !showAdvanced);
+      });
+      document.getElementById('resetBtn').addEventListener('click', resetFilters);
+
+      const bind = (id, key, immediate) => {
+        const el = document.getElementById(id);
+        const handler = () => { f[key] = el.value; page = 0; load(); };
+        if (immediate) {
+          let t; el.addEventListener('input', () => { clearTimeout(t); t = setTimeout(handler, 350); });
+        } else {
+          el.addEventListener('change', handler);
+        }
+      };
+      bind('fSearch', 'search', true);
+      bind('fStatus', 'status'); bind('fCategory', 'category');
+      bind('fMinCount', 'minCount', true); bind('fMaxCount', 'maxCount', true);
+      bind('fMinTotal', 'minTotal', true);
+      bind('fTargeted', 'targeted');
+      bind('fLastAfter', 'lastAfter'); bind('fLastBefore', 'lastBefore');
+      bind('fDayMin', 'dayMin', true); bind('fPeriodMin', 'periodMin', true);
+
+      document.getElementById('fDayCol').addEventListener('change', (e) => {
+        f.dayCol = e.target.value; document.getElementById('fDayMin').disabled = !f.dayCol; page = 0; load();
+      });
+      document.getElementById('fPeriodCol').addEventListener('change', (e) => {
+        f.periodCol = e.target.value; document.getElementById('fPeriodMin').disabled = !f.periodCol; page = 0; load();
+      });
+    }
+
+    function resetFilters() {
+      Object.keys(f).forEach(k => f[k] = '');
+      ['fSearch','fStatus','fCategory','fMinCount','fMaxCount','fMinTotal','fTargeted','fLastAfter','fLastBefore','fDayCol','fDayMin','fPeriodCol','fPeriodMin']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      document.getElementById('fDayMin').disabled = true;
+      document.getElementById('fPeriodMin').disabled = true;
+      page = 0; load();
+    }
+
+    async function recalc() {
+      const btn = document.getElementById('recalcBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-x" style="border-color:rgba(10,70,64,.3);border-top-color:var(--c-primary-dk)"></span> جارٍ الاحتساب...';
+      const { error } = await App.sb.rpc('recalculate_donors');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-rotate"></i> إعادة احتساب الملفات';
+      if (error) { App.toast(error.message, 'err'); return; }
+      App.toast('تمت إعادة احتساب ملفات المتبرعين.', 'ok');
+      load(); loadKpis();
+    }
+
+    function buildQuery(q) {
+      if (f.search) q = q.or(`phone.ilike.%${f.search}%,donor_name.ilike.%${f.search}%`);
+      if (f.status) q = q.eq('status', f.status);
+      if (f.category) q = q.eq('category', f.category);
+      if (f.minCount !== '') q = q.gte('donations_count', Number(f.minCount));
+      if (f.maxCount !== '') q = q.lte('donations_count', Number(f.maxCount));
+      if (f.minTotal !== '') q = q.gte('total_amount', Number(f.minTotal));
+      if (f.targeted === 'yes') q = q.gt('targeted_count', 0);
+      if (f.targeted === 'no') q = q.eq('targeted_count', 0);
+      if (f.lastAfter) q = q.gte('last_donation', new Date(f.lastAfter).toISOString());
+      if (f.lastBefore) q = q.lt('last_donation', new Date(f.lastBefore).toISOString());
+      if (f.dayCol && f.dayMin !== '') q = q.gte(f.dayCol, Number(f.dayMin));
+      if (f.periodCol && f.periodMin !== '') q = q.gte(f.periodCol, Number(f.periodMin));
+      return q;
+    }
+
+    async function loadKpis() {
+      const total = await App.sb.from('donors').select('*', { count:'exact', head:true });
+      const active = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','مستمر');
+      const inactive = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','خامل');
+      const { data: sum } = await App.sb.rpc('donors_total_sum');
+      document.getElementById('kpiTotal').textContent = (total.count || 0).toLocaleString('ar-SA');
+      document.getElementById('kpiActive').textContent = (active.count || 0).toLocaleString('ar-SA');
+      document.getElementById('kpiInactive').textContent = (inactive.count || 0).toLocaleString('ar-SA');
+      document.getElementById('kpiSum').textContent = App.fmtMoney(sum || 0);
+    }
+
+    async function load() {
+      const area = document.getElementById('tableArea');
+      area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
+
+      let q = App.sb.from('donors').select('*', { count:'exact' })
+        .order('total_amount', { ascending:false })
+        .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
+      q = buildQuery(q);
+      const { data, count:c, error } = await q;
+      if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
+      count = c || 0;
+      document.getElementById('cnt').textContent = `(${count.toLocaleString('ar-SA')} نتيجة)`;
+
+      if (!data.length) {
+        area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد ملفات متبرعين مطابقة.</div>';
+        return;
+      }
+
+      const dayTh = DAY_COLS.map(d => `<th>${d.label}</th>`).join('');
+      const periodTh = PERIOD_COLS.map(d => `<th>${d.label}</th>`).join('');
+
+      const rowsHtml = data.map(r => {
+        const projects = (r.projects || []);
+        const chips = projects.slice(0,4).map(p => `<span class="chip">${App.esc(p)}</span>`).join('')
+          + (projects.length > 4 ? `<span class="chip">+${projects.length - 4}</span>` : '');
+        const dayTd = DAY_COLS.map(d => `<td>${r[d.key] || 0}</td>`).join('');
+        const periodTd = PERIOD_COLS.map(d => `<td>${r[d.key] || 0}</td>`).join('');
+        const statusBadge = r.status === 'مستمر' ? 'badge-active' : 'badge-inactive';
+        return `<tr>
+          <td>${App.esc(r.donor_name) || '—'}</td>
+          <td dir="ltr" style="text-align:right">${App.esc(r.phone)}</td>
+          <td>${App.fmtDate(r.first_donation)}</td>
+          <td>${App.fmtDate(r.last_donation)}</td>
+          <td style="font-weight:700">${App.fmtMoney(r.total_amount)}</td>
+          <td>${r.donations_count}</td>
+          <td style="white-space:normal;min-width:160px;max-width:240px">${chips}</td>
+          <td><span class="badge-x ${statusBadge}">${App.esc(r.status) || '—'}</span></td>
+          <td><span class="badge-x badge-cat">${App.esc(r.category) || '—'}</span></td>
+          ${dayTd}${periodTd}
+          <td>${r.targeted_count || 0}</td>
+          <td>${App.fmtDate(r.last_targeted)}</td>
+        </tr>`;
+      }).join('');
+
+      const pages = Math.ceil(count / App.PAGE_SIZE);
+      area.innerHTML = `
+        <div class="table-wrap"><table class="data">
+          <thead><tr>
+            <th>الاسم</th><th>الجوال</th><th>أول تبرع</th><th>آخر تبرع</th>
+            <th>الإجمالي</th><th>العدد</th><th>المشاريع</th><th>الحالة</th><th>الفئة</th>
+            ${dayTh}${periodTh}<th>مرات الاستهداف</th><th>آخر استهداف</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table></div>
+        ${pagerHtml(pages)}`;
+      wirePager(pages);
+    }
+
+    function pagerHtml(pages) {
+      if (pages <= 1) return '';
+      return `<div class="pager">
+        <button class="btn-x btn-ghost btn-sm" id="prev" ${page === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i> السابق</button>
+        <span class="muted">صفحة ${page + 1} من ${pages}</span>
+        <button class="btn-x btn-ghost btn-sm" id="next" ${page + 1 >= pages ? 'disabled' : ''}>التالي <i class="fa-solid fa-chevron-left"></i></button>
+      </div>`;
+    }
+    function wirePager(pages) {
+      document.getElementById('prev')?.addEventListener('click', () => { if (page > 0) { page--; load(); } });
+      document.getElementById('next')?.addEventListener('click', () => { if (page + 1 < pages) { page++; load(); } });
+    }
+  </script>
+</body>
+</html>
