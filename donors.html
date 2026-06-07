@@ -13,6 +13,7 @@
   <div class="app-shell" id="shell"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -28,10 +29,20 @@
     ];
 
     let page = 0, count = 0, categories = [], showAdvanced = false;
+    // الفلاتر: status / category / days / periods أصبحت مصفوفات (تحديد متعدد، مطابقة "أو")
     const f = {
-      search:'', status:'', category:'', minCount:'', maxCount:'', minTotal:'',
-      targeted:'', lastBefore:'', lastAfter:'', dayCol:'', dayMin:'', periodCol:'', periodMin:'',
+      search:'', statuses:[], cats:[], minCount:'', maxCount:'', minTotal:'',
+      targeted:'', lastBefore:'', lastAfter:'', days:[], periods:[],
     };
+
+    // الحصالة: مجموعة أرقام جوال محفوظة في المتصفح (تتراكم عبر عدة فلترات)
+    const JAR_KEY = 'donor_jar_v1';
+    let jar = loadJar();
+    function loadJar() {
+      try { return new Set(JSON.parse(localStorage.getItem(JAR_KEY) || '[]')); }
+      catch { return new Set(); }
+    }
+    function saveJar() { localStorage.setItem(JAR_KEY, JSON.stringify([...jar])); updateJarUI(); }
 
     (async () => {
       const session = await App.initShell('donors.html');
@@ -60,6 +71,17 @@
             <div class="col-6 col-lg-3"><div class="kpi-card gold"><div class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div><div class="kpi-label">إجمالي التبرعات</div><div class="kpi-value" id="kpiSum">—</div></div></div>
           </div>
 
+          <!-- شريط الحصالة -->
+          <div class="jar-bar fade-in">
+            <i class="fa-solid fa-piggy-bank" style="font-size:1.4rem;color:var(--c-gold)"></i>
+            <strong>الحصالة</strong>
+            <span class="jar-count" id="jarCount">0</span>
+            <span class="muted" style="font-size:.9rem">متبرع مجمّع</span>
+            <div style="flex:1"></div>
+            <button class="btn-x btn-gold btn-sm" id="addToJar"><i class="fa-solid fa-plus"></i> أضف نتائج الفلتر الحالي</button>
+            <button class="btn-x btn-ghost btn-sm" id="viewJar"><i class="fa-solid fa-eye"></i> عرض / تصدير</button>
+          </div>
+
           <div class="panel fade-in" style="margin-bottom:1.5rem">
             <div class="panel-head">
               <h2><i class="fa-solid fa-filter"></i> الفلترة</h2>
@@ -69,27 +91,44 @@
               </div>
             </div>
             <div class="panel-body">
-              <div class="row g-2">
+              <div class="row g-3">
                 <div class="col-12 col-md-4"><label class="lbl">بحث (اسم / جوال)</label><input class="field" id="fSearch" placeholder="ابحث..." /></div>
-                <div class="col-6 col-md-4"><label class="lbl">حالة العميل</label>
-                  <select class="field" id="fStatus"><option value="">الكل</option><option value="مستمر">مستمر</option><option value="خامل">خامل</option></select></div>
-                <div class="col-6 col-md-4"><label class="lbl">فئة العميل</label>
-                  <select class="field" id="fCategory"><option value="">الكل</option>${catOpts}</select></div>
+                <div class="col-6 col-md-4">
+                  <label class="lbl">حالة العميل <span class="muted">(تحديد متعدد)</span></label>
+                  <div class="chip-group" id="grpStatus">
+                    <button type="button" class="chip-toggle" data-v="مستمر">مستمر</button>
+                    <button type="button" class="chip-toggle" data-v="خامل">خامل</button>
+                  </div>
+                </div>
+                <div class="col-6 col-md-4">
+                  <label class="lbl">فئة العميل <span class="muted">(تحديد متعدد)</span></label>
+                  <div class="chip-group" id="grpCat">
+                    ${categories.map(c => `<button type="button" class="chip-toggle" data-v="${App.esc(c)}">${App.esc(c)}</button>`).join('')}
+                  </div>
+                </div>
               </div>
-              <div class="row g-2 ${showAdvanced ? '' : 'hidden'}" id="advRow" style="margin-top:.25rem">
-                <div class="col-6 col-md-3"><label class="lbl">عدد التبرعات (من)</label><input type="number" class="field" id="fMinCount" /></div>
-                <div class="col-6 col-md-3"><label class="lbl">عدد التبرعات (إلى)</label><input type="number" class="field" id="fMaxCount" /></div>
-                <div class="col-6 col-md-3"><label class="lbl">إجمالي التبرعات (أكثر من)</label><input type="number" class="field" id="fMinTotal" /></div>
-                <div class="col-6 col-md-3"><label class="lbl">الاستهداف في حملة</label>
-                  <select class="field" id="fTargeted"><option value="">الكل</option><option value="yes">تم استهدافه</option><option value="no">لم يُستهدف</option></select></div>
-                <div class="col-6 col-md-3"><label class="lbl">آخر تبرع بعد</label><input type="date" class="field" id="fLastAfter" /></div>
-                <div class="col-6 col-md-3"><label class="lbl">آخر تبرع قبل</label><input type="date" class="field" id="fLastBefore" /></div>
-                <div class="col-6 col-md-3"><label class="lbl">يوم التبرع</label>
-                  <select class="field" id="fDayCol"><option value="">—</option>${dayOpts}</select></div>
-                <div class="col-6 col-md-3"><label class="lbl">تبرّع بهذا اليوم (مرات ≥)</label><input type="number" class="field" id="fDayMin" disabled /></div>
-                <div class="col-6 col-md-3"><label class="lbl">فترة التبرع</label>
-                  <select class="field" id="fPeriodCol"><option value="">—</option>${periodOpts}</select></div>
-                <div class="col-6 col-md-3"><label class="lbl">تبرّع بهذه الفترة (مرات ≥)</label><input type="number" class="field" id="fPeriodMin" disabled /></div>
+              <div class="${showAdvanced ? '' : 'hidden'}" id="advRow" style="margin-top:1rem">
+                <div class="row g-3">
+                  <div class="col-6 col-md-3"><label class="lbl">عدد التبرعات (من)</label><input type="number" class="field" id="fMinCount" /></div>
+                  <div class="col-6 col-md-3"><label class="lbl">عدد التبرعات (إلى)</label><input type="number" class="field" id="fMaxCount" /></div>
+                  <div class="col-6 col-md-3"><label class="lbl">إجمالي التبرعات (أكثر من)</label><input type="number" class="field" id="fMinTotal" /></div>
+                  <div class="col-6 col-md-3"><label class="lbl">الاستهداف في حملة</label>
+                    <select class="field" id="fTargeted"><option value="">الكل</option><option value="yes">تم استهدافه</option><option value="no">لم يُستهدف</option></select></div>
+                  <div class="col-6 col-md-3"><label class="lbl">آخر تبرع بعد</label><input type="date" class="field" id="fLastAfter" /></div>
+                  <div class="col-6 col-md-3"><label class="lbl">آخر تبرع قبل</label><input type="date" class="field" id="fLastBefore" /></div>
+                  <div class="col-12 col-md-6">
+                    <label class="lbl">يوم التبرع <span class="muted">(تحديد متعدد — تبرّع في أيٍّ منها)</span></label>
+                    <div class="chip-group" id="grpDays">
+                      ${DAY_COLS.map(d => `<button type="button" class="chip-toggle" data-v="${d.key}">${d.label}</button>`).join('')}
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="lbl">فترة التبرع <span class="muted">(تحديد متعدد — تبرّع في أيٍّ منها)</span></label>
+                    <div class="chip-group" id="grpPeriods">
+                      ${PERIOD_COLS.map(d => `<button type="button" class="chip-toggle" data-v="${d.key}">${d.label}</button>`).join('')}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -101,6 +140,7 @@
         </div>`;
 
       wireControls();
+      updateJarUI();
     }
 
     function wireControls() {
@@ -110,6 +150,10 @@
         document.getElementById('advRow').classList.toggle('hidden', !showAdvanced);
       });
       document.getElementById('resetBtn').addEventListener('click', resetFilters);
+
+      // الحصالة
+      document.getElementById('addToJar').addEventListener('click', addCurrentFilterToJar);
+      document.getElementById('viewJar').addEventListener('click', openJarModal);
 
       const bind = (id, key, immediate) => {
         const el = document.getElementById(id);
@@ -121,27 +165,39 @@
         }
       };
       bind('fSearch', 'search', true);
-      bind('fStatus', 'status'); bind('fCategory', 'category');
       bind('fMinCount', 'minCount', true); bind('fMaxCount', 'maxCount', true);
       bind('fMinTotal', 'minTotal', true);
       bind('fTargeted', 'targeted');
       bind('fLastAfter', 'lastAfter'); bind('fLastBefore', 'lastBefore');
-      bind('fDayMin', 'dayMin', true); bind('fPeriodMin', 'periodMin', true);
 
-      document.getElementById('fDayCol').addEventListener('change', (e) => {
-        f.dayCol = e.target.value; document.getElementById('fDayMin').disabled = !f.dayCol; page = 0; load();
-      });
-      document.getElementById('fPeriodCol').addEventListener('change', (e) => {
-        f.periodCol = e.target.value; document.getElementById('fPeriodMin').disabled = !f.periodCol; page = 0; load();
+      // مجموعات التحديد المتعدد
+      wireChipGroup('grpStatus', 'statuses');
+      wireChipGroup('grpCat', 'cats');
+      wireChipGroup('grpDays', 'days');
+      wireChipGroup('grpPeriods', 'periods');
+    }
+
+    function wireChipGroup(groupId, key) {
+      const grp = document.getElementById(groupId);
+      if (!grp) return;
+      grp.querySelectorAll('.chip-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const v = btn.dataset.v;
+          const i = f[key].indexOf(v);
+          if (i >= 0) { f[key].splice(i, 1); btn.classList.remove('on'); }
+          else { f[key].push(v); btn.classList.add('on'); }
+          page = 0; load();
+        });
       });
     }
 
     function resetFilters() {
-      Object.keys(f).forEach(k => f[k] = '');
-      ['fSearch','fStatus','fCategory','fMinCount','fMaxCount','fMinTotal','fTargeted','fLastAfter','fLastBefore','fDayCol','fDayMin','fPeriodCol','fPeriodMin']
+      f.search = ''; f.minCount = ''; f.maxCount = ''; f.minTotal = '';
+      f.targeted = ''; f.lastAfter = ''; f.lastBefore = '';
+      f.statuses = []; f.cats = []; f.days = []; f.periods = [];
+      ['fSearch','fMinCount','fMaxCount','fMinTotal','fTargeted','fLastAfter','fLastBefore']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-      document.getElementById('fDayMin').disabled = true;
-      document.getElementById('fPeriodMin').disabled = true;
+      document.querySelectorAll('.chip-toggle.on').forEach(b => b.classList.remove('on'));
       page = 0; load();
     }
 
@@ -157,10 +213,11 @@
       load(); loadKpis();
     }
 
+    // يطبّق الفلاتر على استعلام معطى (يُستخدم للجدول وللحصالة)
     function buildQuery(q) {
       if (f.search) q = q.or(`phone.ilike.%${f.search}%,donor_name.ilike.%${f.search}%`);
-      if (f.status) q = q.eq('status', f.status);
-      if (f.category) q = q.eq('category', f.category);
+      if (f.statuses.length) q = q.in('status', f.statuses);
+      if (f.cats.length) q = q.in('category', f.cats);
       if (f.minCount !== '') q = q.gte('donations_count', Number(f.minCount));
       if (f.maxCount !== '') q = q.lte('donations_count', Number(f.maxCount));
       if (f.minTotal !== '') q = q.gte('total_amount', Number(f.minTotal));
@@ -168,8 +225,10 @@
       if (f.targeted === 'no') q = q.eq('targeted_count', 0);
       if (f.lastAfter) q = q.gte('last_donation', new Date(f.lastAfter).toISOString());
       if (f.lastBefore) q = q.lt('last_donation', new Date(f.lastBefore).toISOString());
-      if (f.dayCol && f.dayMin !== '') q = q.gte(f.dayCol, Number(f.dayMin));
-      if (f.periodCol && f.periodMin !== '') q = q.gte(f.periodCol, Number(f.periodMin));
+      // الأيام: تبرّع في أيٍّ منها => OR على الأعمدة (col.gt.0)
+      if (f.days.length) q = q.or(f.days.map(c => `${c}.gt.0`).join(','));
+      // الفترات: نفس المنطق
+      if (f.periods.length) q = q.or(f.periods.map(c => `${c}.gt.0`).join(','));
       return q;
     }
 
@@ -253,6 +312,140 @@
     function wirePager(pages) {
       document.getElementById('prev')?.addEventListener('click', () => { if (page > 0) { page--; load(); } });
       document.getElementById('next')?.addEventListener('click', () => { if (page + 1 < pages) { page++; load(); } });
+    }
+
+    // =================== الحصالة ===================
+    function updateJarUI() {
+      const el = document.getElementById('jarCount');
+      if (el) el.textContent = jar.size.toLocaleString('ar-SA');
+    }
+
+    // إضافة كل المتبرعين المطابقين للفلتر الحالي (وليس صفحة واحدة فقط)
+    async function addCurrentFilterToJar() {
+      const btn = document.getElementById('addToJar');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-x"></span> جارٍ الإضافة...';
+      try {
+        const before = jar.size;
+        const CHUNK = 1000;
+        let from = 0, done = false;
+        while (!done) {
+          let q = App.sb.from('donors').select('phone').range(from, from + CHUNK - 1);
+          q = buildQuery(q);
+          const { data, error } = await q;
+          if (error) throw error;
+          (data || []).forEach(r => { if (r.phone) jar.add(r.phone); });
+          if (!data || data.length < CHUNK) done = true; else from += CHUNK;
+        }
+        saveJar();
+        const added = jar.size - before;
+        App.toast(`أُضيف ${added.toLocaleString('ar-SA')} متبرع للحصالة (الإجمالي ${jar.size.toLocaleString('ar-SA')}).`, 'ok');
+      } catch (e) {
+        App.toast(e.message || 'تعذّرت الإضافة', 'err');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-plus"></i> أضف نتائج الفلتر الحالي';
+      }
+    }
+
+    async function openJarModal() {
+      const phones = [...jar];
+      const back = document.createElement('div');
+      back.className = 'modal-back';
+      back.innerHTML = `
+        <div class="modal-box">
+          <div class="panel-head">
+            <h2><i class="fa-solid fa-piggy-bank text-gold"></i> الحصالة (${phones.length.toLocaleString('ar-SA')})</h2>
+            <button class="btn-x btn-ghost btn-sm" id="jarClose"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="panel-body" style="overflow:auto">
+            ${phones.length ? '' : '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>الحصالة فارغة. افلتر ثم اضغط «أضف نتائج الفلتر الحالي».</div>'}
+            <div id="jarLoad" class="${phones.length ? '' : 'hidden'}"><div class="center-load"><div class="spinner-x spinner-dark" style="width:28px;height:28px"></div></div></div>
+            <div class="table-wrap hidden" id="jarTableWrap">
+              <table class="data">
+                <thead><tr><th>الاسم</th><th>الجوال</th><th>الإجمالي</th><th>العدد</th><th>الحالة</th><th>الفئة</th><th></th></tr></thead>
+                <tbody id="jarBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel-head" style="border-top:1px solid var(--c-line);border-bottom:none">
+            <button class="btn-x btn-danger btn-sm" id="jarClear"><i class="fa-solid fa-trash"></i> تفريغ الحصالة</button>
+            <button class="btn-x btn-gold" id="jarExport" ${phones.length ? '' : 'disabled'}><i class="fa-solid fa-file-excel"></i> تصدير Excel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(back);
+      back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+      document.getElementById('jarClose').addEventListener('click', () => back.remove());
+      document.getElementById('jarClear').addEventListener('click', () => {
+        if (confirm('تفريغ الحصالة بالكامل؟')) { jar.clear(); saveJar(); back.remove(); }
+      });
+
+      if (!phones.length) return;
+
+      // جلب تفاصيل أرقام الحصالة (على دفعات) للعرض والتصدير
+      const rows = await fetchJarRows(phones);
+      document.getElementById('jarLoad').classList.add('hidden');
+      const wrap = document.getElementById('jarTableWrap');
+      wrap.classList.remove('hidden');
+      document.getElementById('jarBody').innerHTML = rows.map(r => `
+        <tr>
+          <td>${App.esc(r.donor_name) || '—'}</td>
+          <td dir="ltr" style="text-align:right">${App.esc(r.phone)}</td>
+          <td style="font-weight:700">${App.fmtMoney(r.total_amount)}</td>
+          <td>${r.donations_count}</td>
+          <td><span class="badge-x ${r.status === 'مستمر' ? 'badge-active' : 'badge-inactive'}">${App.esc(r.status) || '—'}</span></td>
+          <td><span class="badge-x badge-cat">${App.esc(r.category) || '—'}</span></td>
+          <td><button class="btn-x btn-sm btn-ghost" data-rm="${App.esc(r.phone)}"><i class="fa-solid fa-xmark"></i></button></td>
+        </tr>`).join('');
+
+      document.querySelectorAll('[data-rm]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          jar.delete(e.currentTarget.dataset.rm); saveJar();
+          back.remove(); openJarModal();
+        });
+      });
+
+      document.getElementById('jarExport').addEventListener('click', () => exportJar(rows));
+    }
+
+    async function fetchJarRows(phones) {
+      const out = [];
+      const CHUNK = 300; // حد آمن لطول الاستعلام
+      for (let i = 0; i < phones.length; i += CHUNK) {
+        const slice = phones.slice(i, i + CHUNK);
+        const { data, error } = await App.sb.from('donors').select('*').in('phone', slice);
+        if (error) { App.toast(error.message, 'err'); break; }
+        out.push(...(data || []));
+      }
+      return out;
+    }
+
+    function exportJar(rows) {
+      const DAY = DAY_COLS, PER = PERIOD_COLS;
+      const data = rows.map(r => {
+        const o = {
+          'الاسم': r.donor_name || '',
+          'رقم الجوال': r.phone || '',
+          'أول تبرع': App.fmtDate(r.first_donation),
+          'آخر تبرع': App.fmtDate(r.last_donation),
+          'إجمالي التبرعات': r.total_amount || 0,
+          'عدد التبرعات': r.donations_count || 0,
+          'المشاريع': (r.projects || []).join('، '),
+          'حالة العميل': r.status || '',
+          'فئة العميل': r.category || '',
+        };
+        DAY.forEach(d => o[d.label] = r[d.key] || 0);
+        PER.forEach(p => o['فترة ' + p.label] = r[p.key] || 0);
+        o['مرات الاستهداف'] = r.targeted_count || 0;
+        o['آخر استهداف'] = App.fmtDate(r.last_targeted);
+        return o;
+      });
+      const ws = window.XLSX.utils.json_to_sheet(data);
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, 'الحصالة');
+      const today = new Date().toISOString().slice(0, 10);
+      window.XLSX.writeFile(wb, `الحصالة-${today}.xlsx`);
+      App.toast(`تم تصدير ${rows.length.toLocaleString('ar-SA')} متبرع.`, 'ok');
     }
   </script>
 </body>

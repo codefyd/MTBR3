@@ -177,3 +177,34 @@ label.lbl { font-size: .9rem; color: var(--c-ink-soft); margin-bottom: .3rem; di
 }
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 90; }
 .menu-toggle { display: none; position: fixed; top: .85rem; inset-inline-start: 1rem; z-index: 80; }
+
+/* أزرار التحديد المتعدد (chips toggle) */
+.chip-group { display: flex; flex-wrap: wrap; gap: .4rem; }
+.chip-toggle {
+  border: 1px solid var(--c-line); background: var(--c-surface); color: var(--c-ink-soft);
+  padding: .4rem .85rem; border-radius: 999px; font-family: inherit; font-size: .92rem;
+  cursor: pointer; transition: all var(--t-fast); user-select: none;
+}
+.chip-toggle:hover { border-color: var(--c-primary); color: var(--c-primary); }
+.chip-toggle.on {
+  background: var(--c-primary); color: #fff; border-color: var(--c-primary);
+  box-shadow: 0 3px 10px rgba(15,94,84,.25);
+}
+/* شريط الحصالة */
+.jar-bar {
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+  background: var(--c-gold-lt); border: 1px solid #e7d5a8;
+  border-radius: var(--radius); padding: .75rem 1rem; margin-bottom: 1.5rem;
+}
+.jar-count {
+  background: var(--c-gold); color: var(--c-primary-dk); font-weight: 700;
+  border-radius: 999px; padding: .15rem .7rem; min-width: 2rem; text-align: center;
+}
+.modal-back {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200;
+  display: grid; place-items: center; padding: 1rem;
+}
+.modal-box {
+  background: var(--c-surface); border-radius: var(--radius); width: 100%; max-width: 640px;
+  max-height: 85vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg);
+}
