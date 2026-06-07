@@ -78,11 +78,22 @@
 
         const records = [];
         let skipped = 0;
+        const rejected = []; // الأرقام التي فشل تطبيعها
         for (const row of rows) {
           const lineNo = App.toNum(App.pick(row, ['رقم']));
           const opNo = App.toNum(App.pick(row, ['#العملية', 'العملية']));
           if (lineNo === null || opNo === null) { skipped++; continue; }
           const phoneRaw = App.pick(row, ['الجوال']);
+          // تطبيع الجوال محليًا لرصد المرفوض (قاعدة البيانات تطبّق نفس المنطق)
+          const norm = App.normalizePhone(phoneRaw);
+          if (phoneRaw != null && String(phoneRaw).trim() !== '' && norm.phone === null) {
+            rejected.push({
+              'رقم': lineNo, '#العملية': opNo,
+              'الاسم': App.pick(row, ['الاسم']) || '',
+              'الجوال كما ورد': String(phoneRaw),
+              'سبب الرفض': norm.reason,
+            });
+          }
           records.push({
             line_no: lineNo, operation_no: opNo,
             donor_name: App.pick(row, ['الاسم']),
@@ -102,6 +113,7 @@
         if (rpcErr) throw rpcErr;
 
         App.toast(`تمت المعالجة: ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''} وإعادة حساب الملفات.`, 'ok');
+        if (rejected.length) showRejectedReport(rejected);
         page = 0; load();
       } catch (e) {
         App.toast(e.message || 'فشل الرفع', 'err');
@@ -174,6 +186,45 @@
     function wirePager(pages) {
       document.getElementById('prev')?.addEventListener('click', () => { if (page > 0) { page--; load(); } });
       document.getElementById('next')?.addEventListener('click', () => { if (page + 1 < pages) { page++; load(); } });
+    }
+
+    // تقرير الأرقام المرفوضة بعد الرفع (نافذة + تصدير Excel)
+    function showRejectedReport(rejected) {
+      const back = document.createElement('div');
+      back.className = 'modal-back';
+      const preview = rejected.slice(0, 100).map(r => `
+        <tr>
+          <td>${r['رقم']}</td><td>${r['#العملية']}</td>
+          <td>${App.esc(r['الاسم'])}</td>
+          <td dir="ltr" style="text-align:right">${App.esc(r['الجوال كما ورد'])}</td>
+          <td>${App.esc(r['سبب الرفض'])}</td>
+        </tr>`).join('');
+      back.innerHTML = `
+        <div class="modal-box">
+          <div class="panel-head">
+            <h2 style="color:var(--c-danger)"><i class="fa-solid fa-triangle-exclamation"></i> أرقام لم تُعالَج (${rejected.length.toLocaleString('ar-SA')})</h2>
+            <button class="btn-x btn-ghost btn-sm" id="rjClose"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="panel-body" style="overflow:auto">
+            <p class="muted" style="margin-top:0">تم حفظ العمليات، لكن هذه الأرقام لم تُربط بمتبرع لأنها غير صالحة. راجعها وصحّحها في الملف ثم أعد الرفع.${rejected.length > 100 ? ' (عرض أول 100 فقط — التصدير يشمل الكل)' : ''}</p>
+            <div class="table-wrap"><table class="data">
+              <thead><tr><th>رقم</th><th>#العملية</th><th>الاسم</th><th>الجوال كما ورد</th><th>سبب الرفض</th></tr></thead>
+              <tbody>${preview}</tbody>
+            </table></div>
+          </div>
+          <div class="panel-head" style="border-top:1px solid var(--c-line);border-bottom:none;justify-content:flex-end">
+            <button class="btn-x btn-gold" id="rjExport"><i class="fa-solid fa-file-excel"></i> تصدير قائمة المرفوضة</button>
+          </div>
+        </div>`;
+      document.body.appendChild(back);
+      back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+      document.getElementById('rjClose').addEventListener('click', () => back.remove());
+      document.getElementById('rjExport').addEventListener('click', () => {
+        const ws = window.XLSX.utils.json_to_sheet(rejected);
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, 'أرقام مرفوضة');
+        window.XLSX.writeFile(wb, `أرقام-مرفوضة-${new Date().toISOString().slice(0,10)}.xlsx`);
+      });
     }
   </script>
 </body>

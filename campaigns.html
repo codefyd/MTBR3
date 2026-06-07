@@ -73,9 +73,21 @@
         if (!rows.length) throw new Error('الملف فارغ');
         const records = [];
         let skipped = 0;
+        const rejected = [];
         for (const row of rows) {
           const phoneRaw = App.pick(row, ['الجوال']);
-          if (!App.cleanPhone(phoneRaw)) { skipped++; continue; }
+          const norm = App.normalizePhone(phoneRaw);
+          if (norm.phone === null) {
+            skipped++;
+            if (phoneRaw != null && String(phoneRaw).trim() !== '') {
+              rejected.push({
+                'الجوال كما ورد': String(phoneRaw),
+                'اسم الحملة': App.pick(row, ['اسم الحملة', 'اسمالحملة', 'الحملة']) || '',
+                'سبب الرفض': norm.reason,
+              });
+            }
+            continue;
+          }
           records.push({
             phone_raw: phoneRaw != null ? String(phoneRaw) : null,
             campaign_name: App.pick(row, ['اسم الحملة', 'اسمالحملة', 'الحملة']),
@@ -89,6 +101,7 @@
         if (rpcErr) throw rpcErr;
 
         App.toast(`تمت إضافة ${inserted} سجل استهداف${skipped ? ` (تخطّي ${skipped})` : ''} وتحديث ملفات المتبرعين.`, 'ok');
+        if (rejected.length) showRejectedReport(rejected);
         page = 0; load();
       } catch (e) {
         App.toast(e.message || 'فشل الرفع', 'err');
@@ -147,6 +160,43 @@
     function wirePager(pages) {
       document.getElementById('prev')?.addEventListener('click', () => { if (page > 0) { page--; load(); } });
       document.getElementById('next')?.addEventListener('click', () => { if (page + 1 < pages) { page++; load(); } });
+    }
+
+    function showRejectedReport(rejected) {
+      const back = document.createElement('div');
+      back.className = 'modal-back';
+      const preview = rejected.slice(0, 100).map(r => `
+        <tr>
+          <td dir="ltr" style="text-align:right">${App.esc(r['الجوال كما ورد'])}</td>
+          <td>${App.esc(r['اسم الحملة'])}</td>
+          <td>${App.esc(r['سبب الرفض'])}</td>
+        </tr>`).join('');
+      back.innerHTML = `
+        <div class="modal-box">
+          <div class="panel-head">
+            <h2 style="color:var(--c-danger)"><i class="fa-solid fa-triangle-exclamation"></i> أرقام لم تُعالَج (${rejected.length.toLocaleString('ar-SA')})</h2>
+            <button class="btn-x btn-ghost btn-sm" id="rjClose"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="panel-body" style="overflow:auto">
+            <p class="muted" style="margin-top:0">هذه الأرقام غير صالحة ولم تُضَف.${rejected.length > 100 ? ' (عرض أول 100 — التصدير يشمل الكل)' : ''}</p>
+            <div class="table-wrap"><table class="data">
+              <thead><tr><th>الجوال كما ورد</th><th>اسم الحملة</th><th>سبب الرفض</th></tr></thead>
+              <tbody>${preview}</tbody>
+            </table></div>
+          </div>
+          <div class="panel-head" style="border-top:1px solid var(--c-line);border-bottom:none;justify-content:flex-end">
+            <button class="btn-x btn-gold" id="rjExport"><i class="fa-solid fa-file-excel"></i> تصدير قائمة المرفوضة</button>
+          </div>
+        </div>`;
+      document.body.appendChild(back);
+      back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+      document.getElementById('rjClose').addEventListener('click', () => back.remove());
+      document.getElementById('rjExport').addEventListener('click', () => {
+        const ws = window.XLSX.utils.json_to_sheet(rejected);
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, 'أرقام مرفوضة');
+        window.XLSX.writeFile(wb, `أرقام-مرفوضة-حملات-${new Date().toISOString().slice(0,10)}.xlsx`);
+      });
     }
   </script>
 </body>

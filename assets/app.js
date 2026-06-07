@@ -116,14 +116,37 @@ function esc(s) {
 }
 
 // ------- أدوات Excel -------
-function cleanPhone(raw) {
-  if (raw === null || raw === undefined) return null;
+// تنظيف وتطبيع رقم الجوال (نفس منطق دالة SQL)
+// السعودي => 966XXXXXXXXX | الأجنبي => كما هو | المبتور => null
+const SA_OPERATORS = ['50','53','54','55','56','57','58','59'];
+function normalizePhone(raw) {
+  if (raw === null || raw === undefined) return { phone: null, reason: 'فارغ' };
   let d = String(raw).replace(/[^0-9]/g, '');
-  if (!d) return null;
-  if (d.startsWith('00966')) d = d.slice(5);
-  else if (d.startsWith('966')) d = d.slice(3);
-  d = d.replace(/^0+/, '');
-  return d || null;
+  if (!d) return { phone: null, reason: 'لا يحتوي أرقام' };
+  d = d.replace(/^00/, '');
+
+  if (/^9665\d{8}$/.test(d)) {
+    return SA_OPERATORS.includes(d.slice(3, 5))
+      ? { phone: d, reason: 'سعودي صحيح' }
+      : { phone: null, reason: 'مشغّل سعودي غير صحيح' };
+  }
+  if (/^05\d{8}$/.test(d)) {
+    return SA_OPERATORS.includes(d.slice(1, 3))
+      ? { phone: '966' + d.slice(1), reason: 'محلي بصفر' }
+      : { phone: null, reason: 'مشغّل سعودي غير صحيح' };
+  }
+  if (/^5\d{8}$/.test(d)) {
+    return SA_OPERATORS.includes(d.slice(0, 2))
+      ? { phone: '966' + d, reason: 'محلي 9 خانات' }
+      : { phone: null, reason: 'مشغّل سعودي غير صحيح (' + d.slice(0, 2) + ')' };
+  }
+  if (d.startsWith('966')) return { phone: null, reason: 'يبدأ بـ966 لكن غير صالح' };
+  if (d.length >= 8 && d.length <= 15) return { phone: d, reason: 'أجنبي' };
+  return { phone: null, reason: 'مبتور/غير صالح (' + d.length + ' خانة)' };
+}
+// واجهة مختصرة ترجع الرقم فقط (للتوافق مع الاستدعاءات السابقة)
+function cleanPhone(raw) {
+  return normalizePhone(raw).phone;
 }
 function toNum(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -149,12 +172,13 @@ function pick(row, keys) {
   }
   return null;
 }
-// قراءة ملف Excel وإرجاع مصفوفة صفوف ككائنات
+// قراءة ملف Excel/CSV وإرجاع مصفوفة صفوف ككائنات
+// raw:false يجعل القيم نصوصاً منسّقة فلا تتحول الأرقام الطويلة (مثل الجوال) لصيغة علمية
 async function readExcel(file) {
   const buf = await file.arrayBuffer();
-  const wb = window.XLSX.read(buf, { type: 'array' });
+  const wb = window.XLSX.read(buf, { type: 'array', raw: false, codepage: 65001 });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  return window.XLSX.utils.sheet_to_json(ws, { defval: null });
+  return window.XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
 }
 
 // رفع البيانات على دفعات عبر دالة RPC في قاعدة البيانات
@@ -171,5 +195,5 @@ async function rpcInBatches(fnName, rows, batchSize = 500) {
 
 window.App = {
   sb, guard, initShell, toast, fmtMoney, fmtDate, fmtDateTime, esc,
-  cleanPhone, toNum, toISO, pick, readExcel, rpcInBatches, PAGE_SIZE,
+  cleanPhone, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, PAGE_SIZE,
 };

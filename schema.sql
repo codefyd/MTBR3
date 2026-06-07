@@ -12,24 +12,54 @@
 -- ---------------------------------------------------------------------
 -- 1) دالة تنظيف رقم الجوال (المعرّف الأساسي للمتبرع)
 -- ---------------------------------------------------------------------
+-- تنظيف وتطبيع رقم الجوال:
+--   * السعودي الصحيح  => 966 + 5 + مشغّل صحيح + 7 خانات
+--   * الأجنبي          => يُترك كما هو (رمز دولة معروف أو طول دولي معقول)
+--   * المبتور/الخاطئ   => null (يُرفض ويُسجّل في تقرير الرفض من جهة التطبيق)
+-- المشغّلات السعودية المقبولة: 50,53,54,55,56,57,58,59
 create or replace function clean_phone(raw text)
 returns text
 language plpgsql
 immutable
 as $$
 declare
-  digits text;
+  d   text;
+  op  text;
 begin
   if raw is null then return null; end if;
-  digits := regexp_replace(raw, '[^0-9]', '', 'g');
-  if digits = '' then return null; end if;
-  if left(digits, 5) = '00966' then
-    digits := substring(digits from 6);
-  elsif left(digits, 3) = '966' then
-    digits := substring(digits from 4);
+  d := regexp_replace(raw, '[^0-9]', '', 'g');
+  if d = '' then return null; end if;
+  d := regexp_replace(d, '^00', '');   -- بادئة دولية 00
+
+  -- سعودي بصيغة 966 + 5XXXXXXXX
+  if d ~ '^9665[0-9]{8}$' then
+    op := substring(d from 4 for 2);
+    if op in ('50','53','54','55','56','57','58','59') then return d; end if;
+    return null;
   end if;
-  digits := regexp_replace(digits, '^0+', '');
-  return digits;
+
+  -- محلي بصفر بادئ 05XXXXXXXX
+  if d ~ '^05[0-9]{8}$' then
+    op := substring(d from 2 for 2);
+    if op in ('50','53','54','55','56','57','58','59') then return '966' || substring(d from 2); end if;
+    return null;
+  end if;
+
+  -- محلي 9 خانات 5XXXXXXXX
+  if d ~ '^5[0-9]{8}$' then
+    op := substring(d from 1 for 2);
+    if op in ('50','53','54','55','56','57','58','59') then return '966' || d; end if;
+    return null;
+  end if;
+
+  -- يبدأ بـ966 لكن غير مطابق للصيغة السعودية => غير صالح
+  if left(d, 3) = '966' then return null; end if;
+
+  -- أجنبي: طول دولي معقول (8 إلى 15) => يُترك كما هو
+  if length(d) between 8 and 15 then return d; end if;
+
+  -- غير ذلك: مبتور/غير صالح
+  return null;
 end;
 $$;
 
@@ -284,7 +314,8 @@ begin
     when last_donation is null then 'خامل'
     when last_donation >= (now() - (v_inactive_days || ' days')::interval) then 'مستمر'
     else 'خامل'
-  end;
+  end
+  where phone is not null;
 
   update donors d
   set category = sub.cat
@@ -302,7 +333,7 @@ begin
   ) sub
   where d.phone = sub.phone;
 
-  update donors set updated_at = now();
+  update donors set updated_at = now() where phone is not null;
 end;
 $$;
 
