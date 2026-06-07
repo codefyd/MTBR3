@@ -28,30 +28,57 @@
       { key:'period_evening', label:'٤م–٦:٥٩م' }, { key:'period_night', label:'٧م–٣:٥٩ص' },
     ];
 
-    let page = 0, count = 0, categories = [], showAdvanced = false;
-    // الفلاتر: status / category / days / periods أصبحت مصفوفات (تحديد متعدد، مطابقة "أو")
+    let page = 0, count = 0, categories = [], projectsList = [], showAdvanced = false;
+    // الفلاتر متعددة الاختيار + حدّ أدنى لعدد مرات اليوم/الفترة
     const f = {
-      search:'', statuses:[], cats:[], minCount:'', maxCount:'', minTotal:'',
-      targeted:'', lastBefore:'', lastAfter:'', days:[], periods:[],
+      search:'', statuses:[], cats:[], projects:[], minCount:'', maxCount:'', minTotal:'',
+      targeted:'', lastBefore:'', lastAfter:'',
+      days:[], dayMin:'', periods:[], periodMin:'',
     };
 
-    // الحصالة: مجموعة أرقام جوال محفوظة في المتصفح (تتراكم عبر عدة فلترات)
+    // الحصالة: مجموعة أرقام محفوظة بالمتصفح + سجل دفعات للتراجع عن آخر إضافة
     const JAR_KEY = 'donor_jar_v1';
+    const JAR_BATCHES_KEY = 'donor_jar_batches_v1';
     let jar = loadJar();
+    let jarBatches = loadBatches(); // مصفوفة: كل عنصر = مصفوفة الأرقام التي أضافتها تلك الدفعة (الجديدة فقط)
     function loadJar() {
       try { return new Set(JSON.parse(localStorage.getItem(JAR_KEY) || '[]')); }
       catch { return new Set(); }
     }
-    function saveJar() { localStorage.setItem(JAR_KEY, JSON.stringify([...jar])); updateJarUI(); }
+    function loadBatches() {
+      try { return JSON.parse(localStorage.getItem(JAR_BATCHES_KEY) || '[]'); }
+      catch { return []; }
+    }
+    function saveJar() {
+      localStorage.setItem(JAR_KEY, JSON.stringify([...jar]));
+      localStorage.setItem(JAR_BATCHES_KEY, JSON.stringify(jarBatches));
+      updateJarUI();
+    }
 
     (async () => {
       const session = await App.initShell('donors.html');
       if (!session) return;
       const { data: s } = await App.sb.from('settings').select('categories').eq('id', 1).single();
       categories = (s?.categories || []).map(c => c.name);
+      projectsList = await fetchProjects();
       renderPage();
       load(); loadKpis();
     })();
+
+    // جلب قائمة المشاريع الفريدة من العمليات (لقائمة الفلتر)
+    async function fetchProjects() {
+      const set = new Set();
+      const CHUNK = 1000;
+      let from = 0, done = false, guard = 0;
+      while (!done && guard < 50) {
+        const { data, error } = await App.sb.from('operations').select('project').not('project','is',null).range(from, from + CHUNK - 1);
+        if (error) break;
+        (data || []).forEach(r => { const p = (r.project || '').trim(); if (p) set.add(p); });
+        if (!data || data.length < CHUNK) done = true; else from += CHUNK;
+        guard++;
+      }
+      return [...set].sort((a,b) => a.localeCompare(b,'ar'));
+    }
 
     function renderPage() {
       const catOpts = categories.map(c => `<option value="${App.esc(c)}">${App.esc(c)}</option>`).join('');
@@ -79,6 +106,8 @@
             <span class="muted" style="font-size:.9rem">متبرع مجمّع</span>
             <div style="flex:1"></div>
             <button class="btn-x btn-gold btn-sm" id="addToJar"><i class="fa-solid fa-plus"></i> أضف نتائج الفلتر الحالي</button>
+            <button class="btn-x btn-ghost btn-sm" id="undoJar" title="تراجع عن آخر إضافة"><i class="fa-solid fa-rotate-left"></i> تراجع</button>
+            <button class="btn-x btn-ghost btn-sm" id="clearJar" title="تفريغ الحصالة"><i class="fa-solid fa-broom"></i> تفريغ</button>
             <button class="btn-x btn-ghost btn-sm" id="viewJar"><i class="fa-solid fa-eye"></i> عرض / تصدير</button>
           </div>
 
@@ -106,6 +135,23 @@
                     ${categories.map(c => `<button type="button" class="chip-toggle" data-v="${App.esc(c)}">${App.esc(c)}</button>`).join('')}
                   </div>
                 </div>
+                <div class="col-12 col-md-6">
+                  <label class="lbl">المشاريع <span class="muted">(اختيار متعدد — دعم أيٍّ منها)</span></label>
+                  <div class="multi-dd" id="ddProjects">
+                    <button type="button" class="field multi-dd-toggle" id="ddProjBtn">
+                      <span class="ph" id="ddProjLabel">كل المشاريع</span>
+                      <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="multi-dd-panel hidden" id="ddProjPanel">
+                      <input type="text" class="field multi-dd-search" id="ddProjSearch" placeholder="بحث في المشاريع..." />
+                      <div id="ddProjOpts">
+                        ${projectsList.length
+                          ? projectsList.map(p => `<label class="multi-dd-opt"><input type="checkbox" value="${App.esc(p)}" />${App.esc(p)}</label>`).join('')
+                          : '<div class="muted" style="padding:.5rem">لا توجد مشاريع بعد. ارفع عمليات أولاً.</div>'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="${showAdvanced ? '' : 'hidden'}" id="advRow" style="margin-top:1rem">
                 <div class="row g-3">
@@ -121,11 +167,19 @@
                     <div class="chip-group" id="grpDays">
                       ${DAY_COLS.map(d => `<button type="button" class="chip-toggle" data-v="${d.key}">${d.label}</button>`).join('')}
                     </div>
+                    <div style="margin-top:.5rem;max-width:220px">
+                      <label class="lbl">تبرّع أكثر من (عدد مرات ≥)</label>
+                      <input type="number" min="1" class="field" id="fDayMin" placeholder="مثال: 2" />
+                    </div>
                   </div>
                   <div class="col-12 col-md-6">
                     <label class="lbl">فترة التبرع <span class="muted">(تحديد متعدد — تبرّع في أيٍّ منها)</span></label>
                     <div class="chip-group" id="grpPeriods">
                       ${PERIOD_COLS.map(d => `<button type="button" class="chip-toggle" data-v="${d.key}">${d.label}</button>`).join('')}
+                    </div>
+                    <div style="margin-top:.5rem;max-width:220px">
+                      <label class="lbl">تبرّع أكثر من (عدد مرات ≥)</label>
+                      <input type="number" min="1" class="field" id="fPeriodMin" placeholder="مثال: 2" />
                     </div>
                   </div>
                 </div>
@@ -154,6 +208,8 @@
       // الحصالة
       document.getElementById('addToJar').addEventListener('click', addCurrentFilterToJar);
       document.getElementById('viewJar').addEventListener('click', openJarModal);
+      document.getElementById('undoJar').addEventListener('click', undoLastJar);
+      document.getElementById('clearJar').addEventListener('click', clearJar);
 
       const bind = (id, key, immediate) => {
         const el = document.getElementById(id);
@@ -169,12 +225,45 @@
       bind('fMinTotal', 'minTotal', true);
       bind('fTargeted', 'targeted');
       bind('fLastAfter', 'lastAfter'); bind('fLastBefore', 'lastBefore');
+      bind('fDayMin', 'dayMin', true); bind('fPeriodMin', 'periodMin', true);
 
       // مجموعات التحديد المتعدد
       wireChipGroup('grpStatus', 'statuses');
       wireChipGroup('grpCat', 'cats');
       wireChipGroup('grpDays', 'days');
       wireChipGroup('grpPeriods', 'periods');
+
+      // قائمة المشاريع المنسدلة متعددة الاختيار
+      wireProjectsDropdown();
+    }
+
+    function wireProjectsDropdown() {
+      const btn = document.getElementById('ddProjBtn');
+      const panel = document.getElementById('ddProjPanel');
+      const search = document.getElementById('ddProjSearch');
+      if (!btn) return;
+      btn.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('hidden'); });
+      panel.addEventListener('click', (e) => e.stopPropagation());
+      document.addEventListener('click', () => panel.classList.add('hidden'));
+      search.addEventListener('input', () => {
+        const q = search.value.trim();
+        panel.querySelectorAll('.multi-dd-opt').forEach(o => {
+          o.style.display = o.textContent.includes(q) ? '' : 'none';
+        });
+      });
+      panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          f.projects = [...panel.querySelectorAll('input[type=checkbox]:checked')].map(x => x.value);
+          updateProjLabel();
+          page = 0; load();
+        });
+      });
+    }
+    function updateProjLabel() {
+      const lbl = document.getElementById('ddProjLabel');
+      if (!lbl) return;
+      lbl.textContent = f.projects.length ? `${f.projects.length} مشروع محدد` : 'كل المشاريع';
+      lbl.classList.toggle('ph', f.projects.length === 0);
     }
 
     function wireChipGroup(groupId, key) {
@@ -193,11 +282,13 @@
 
     function resetFilters() {
       f.search = ''; f.minCount = ''; f.maxCount = ''; f.minTotal = '';
-      f.targeted = ''; f.lastAfter = ''; f.lastBefore = '';
-      f.statuses = []; f.cats = []; f.days = []; f.periods = [];
-      ['fSearch','fMinCount','fMaxCount','fMinTotal','fTargeted','fLastAfter','fLastBefore']
+      f.targeted = ''; f.lastAfter = ''; f.lastBefore = ''; f.dayMin = ''; f.periodMin = '';
+      f.statuses = []; f.cats = []; f.days = []; f.periods = []; f.projects = [];
+      ['fSearch','fMinCount','fMaxCount','fMinTotal','fTargeted','fLastAfter','fLastBefore','fDayMin','fPeriodMin']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       document.querySelectorAll('.chip-toggle.on').forEach(b => b.classList.remove('on'));
+      document.querySelectorAll('#ddProjPanel input[type=checkbox]:checked').forEach(cb => cb.checked = false);
+      updateProjLabel();
       page = 0; load();
     }
 
@@ -218,6 +309,8 @@
       if (f.search) q = q.or(`phone.ilike.%${f.search}%,donor_name.ilike.%${f.search}%`);
       if (f.statuses.length) q = q.in('status', f.statuses);
       if (f.cats.length) q = q.in('category', f.cats);
+      // المشاريع: تطابق "أيٍّ منها" => overlaps على مصفوفة projects
+      if (f.projects.length) q = q.overlaps('projects', f.projects);
       if (f.minCount !== '') q = q.gte('donations_count', Number(f.minCount));
       if (f.maxCount !== '') q = q.lte('donations_count', Number(f.maxCount));
       if (f.minTotal !== '') q = q.gte('total_amount', Number(f.minTotal));
@@ -225,10 +318,12 @@
       if (f.targeted === 'no') q = q.eq('targeted_count', 0);
       if (f.lastAfter) q = q.gte('last_donation', new Date(f.lastAfter).toISOString());
       if (f.lastBefore) q = q.lt('last_donation', new Date(f.lastBefore).toISOString());
-      // الأيام: تبرّع في أيٍّ منها => OR على الأعمدة (col.gt.0)
-      if (f.days.length) q = q.or(f.days.map(c => `${c}.gt.0`).join(','));
+      // الأيام: تبرّع في أيٍّ منها بعدد مرات ≥ الحد (افتراضي 1)
+      const dayThr = f.dayMin !== '' && Number(f.dayMin) > 0 ? Number(f.dayMin) : 1;
+      if (f.days.length) q = q.or(f.days.map(c => `${c}.gte.${dayThr}`).join(','));
       // الفترات: نفس المنطق
-      if (f.periods.length) q = q.or(f.periods.map(c => `${c}.gt.0`).join(','));
+      const perThr = f.periodMin !== '' && Number(f.periodMin) > 0 ? Number(f.periodMin) : 1;
+      if (f.periods.length) q = q.or(f.periods.map(c => `${c}.gte.${perThr}`).join(','));
       return q;
     }
 
@@ -261,15 +356,16 @@
         return;
       }
 
-      const dayTh = DAY_COLS.map(d => `<th>${d.label}</th>`).join('');
-      const periodTh = PERIOD_COLS.map(d => `<th>${d.label}</th>`).join('');
+      const dayTh = DAY_COLS.map(d => `<th class="col-day">${d.label}</th>`).join('');
+      const periodTh = PERIOD_COLS.map(d => `<th class="col-period">${d.label}</th>`).join('');
 
       const rowsHtml = data.map(r => {
         const projects = (r.projects || []);
-        const chips = projects.slice(0,4).map(p => `<span class="chip">${App.esc(p)}</span>`).join('')
-          + (projects.length > 4 ? `<span class="chip">+${projects.length - 4}</span>` : '');
-        const dayTd = DAY_COLS.map(d => `<td>${r[d.key] || 0}</td>`).join('');
-        const periodTd = PERIOD_COLS.map(d => `<td>${r[d.key] || 0}</td>`).join('');
+        const chips = projects.length
+          ? projects.map(p => `<span class="chip">${App.esc(p)}</span>`).join('')
+          : '<span class="muted">—</span>';
+        const dayTd = DAY_COLS.map(d => `<td class="col-day">${r[d.key] || 0}</td>`).join('');
+        const periodTd = PERIOD_COLS.map(d => `<td class="col-period">${r[d.key] || 0}</td>`).join('');
         const statusBadge = r.status === 'مستمر' ? 'badge-active' : 'badge-inactive';
         return `<tr>
           <td>${App.esc(r.donor_name) || '—'}</td>
@@ -278,7 +374,7 @@
           <td>${App.fmtDate(r.last_donation)}</td>
           <td style="font-weight:700">${App.fmtMoney(r.total_amount)}</td>
           <td>${r.donations_count}</td>
-          <td style="white-space:normal;min-width:160px;max-width:240px">${chips}</td>
+          <td class="projects-cell">${chips}</td>
           <td><span class="badge-x ${statusBadge}">${App.esc(r.status) || '—'}</span></td>
           <td><span class="badge-x badge-cat">${App.esc(r.category) || '—'}</span></td>
           ${dayTd}${periodTd}
@@ -289,7 +385,7 @@
 
       const pages = Math.ceil(count / App.PAGE_SIZE);
       area.innerHTML = `
-        <div class="table-wrap"><table class="data">
+        <div class="table-wrap"><table class="data donors-table">
           <thead><tr>
             <th>الاسم</th><th>الجوال</th><th>أول تبرع</th><th>آخر تبرع</th>
             <th>الإجمالي</th><th>العدد</th><th>المشاريع</th><th>الحالة</th><th>الفئة</th>
@@ -318,6 +414,10 @@
     function updateJarUI() {
       const el = document.getElementById('jarCount');
       if (el) el.textContent = jar.size.toLocaleString('ar-SA');
+      const undo = document.getElementById('undoJar');
+      const clear = document.getElementById('clearJar');
+      if (undo) undo.disabled = jarBatches.length === 0;
+      if (clear) clear.disabled = jar.size === 0;
     }
 
     // إضافة كل المتبرعين المطابقين للفلتر الحالي (وليس صفحة واحدة فقط)
@@ -326,26 +426,47 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-x"></span> جارٍ الإضافة...';
       try {
-        const before = jar.size;
         const CHUNK = 1000;
         let from = 0, done = false;
+        const addedNow = []; // الأرقام الجديدة فعليًا في هذه الدفعة (للتراجع)
         while (!done) {
           let q = App.sb.from('donors').select('phone').range(from, from + CHUNK - 1);
           q = buildQuery(q);
           const { data, error } = await q;
           if (error) throw error;
-          (data || []).forEach(r => { if (r.phone) jar.add(r.phone); });
+          (data || []).forEach(r => {
+            if (r.phone && !jar.has(r.phone)) { jar.add(r.phone); addedNow.push(r.phone); }
+          });
           if (!data || data.length < CHUNK) done = true; else from += CHUNK;
         }
+        if (addedNow.length) jarBatches.push(addedNow); // سجّل الدفعة للتراجع
         saveJar();
-        const added = jar.size - before;
-        App.toast(`أُضيف ${added.toLocaleString('ar-SA')} متبرع للحصالة (الإجمالي ${jar.size.toLocaleString('ar-SA')}).`, 'ok');
+        App.toast(`أُضيف ${addedNow.length.toLocaleString('ar-SA')} متبرع جديد (الإجمالي ${jar.size.toLocaleString('ar-SA')}).`, 'ok');
       } catch (e) {
         App.toast(e.message || 'تعذّرت الإضافة', 'err');
       } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-plus"></i> أضف نتائج الفلتر الحالي';
       }
+    }
+
+    // تراجع عن آخر إضافة (يزيل فقط الأرقام التي أضافتها آخر دفعة)
+    function undoLastJar() {
+      if (!jarBatches.length) return;
+      const last = jarBatches.pop();
+      last.forEach(p => jar.delete(p));
+      saveJar();
+      App.toast(`تم التراجع عن آخر إضافة (${last.length.toLocaleString('ar-SA')} متبرع).`, 'ok');
+    }
+
+    // تفريغ الحصالة بالكامل
+    function clearJar() {
+      if (!jar.size) return;
+      if (!confirm('تفريغ الحصالة بالكامل؟')) return;
+      jar.clear();
+      jarBatches = [];
+      saveJar();
+      App.toast('تم تفريغ الحصالة.', 'ok');
     }
 
     async function openJarModal() {
@@ -377,7 +498,7 @@
       back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
       document.getElementById('jarClose').addEventListener('click', () => back.remove());
       document.getElementById('jarClear').addEventListener('click', () => {
-        if (confirm('تفريغ الحصالة بالكامل؟')) { jar.clear(); saveJar(); back.remove(); }
+        if (confirm('تفريغ الحصالة بالكامل؟')) { jar.clear(); jarBatches = []; saveJar(); back.remove(); }
       });
 
       if (!phones.length) return;
@@ -400,7 +521,11 @@
 
       document.querySelectorAll('[data-rm]').forEach(btn => {
         btn.addEventListener('click', (e) => {
-          jar.delete(e.currentTarget.dataset.rm); saveJar();
+          const ph = e.currentTarget.dataset.rm;
+          jar.delete(ph);
+          // أزله من سجل الدفعات حفاظًا على اتساق التراجع
+          jarBatches = jarBatches.map(b => b.filter(x => x !== ph)).filter(b => b.length);
+          saveJar();
           back.remove(); openJarModal();
         });
       });

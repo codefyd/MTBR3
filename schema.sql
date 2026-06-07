@@ -34,21 +34,21 @@ begin
   -- سعودي بصيغة 966 + 5XXXXXXXX
   if d ~ '^9665[0-9]{8}$' then
     op := substring(d from 4 for 2);
-    if op in ('50','53','54','55','56','57','58','59') then return d; end if;
+    if op in ('50','51','53','54','55','56','57','58','59') then return d; end if;
     return null;
   end if;
 
   -- محلي بصفر بادئ 05XXXXXXXX
   if d ~ '^05[0-9]{8}$' then
     op := substring(d from 2 for 2);
-    if op in ('50','53','54','55','56','57','58','59') then return '966' || substring(d from 2); end if;
+    if op in ('50','51','53','54','55','56','57','58','59') then return '966' || substring(d from 2); end if;
     return null;
   end if;
 
   -- محلي 9 خانات 5XXXXXXXX
   if d ~ '^5[0-9]{8}$' then
     op := substring(d from 1 for 2);
-    if op in ('50','53','54','55','56','57','58','59') then return '966' || d; end if;
+    if op in ('50','51','53','54','55','56','57','58','59') then return '966' || d; end if;
     return null;
   end if;
 

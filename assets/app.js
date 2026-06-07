@@ -118,7 +118,7 @@ function esc(s) {
 // ------- أدوات Excel -------
 // تنظيف وتطبيع رقم الجوال (نفس منطق دالة SQL)
 // السعودي => 966XXXXXXXXX | الأجنبي => كما هو | المبتور => null
-const SA_OPERATORS = ['50','53','54','55','56','57','58','59'];
+const SA_OPERATORS = ['50','51','53','54','55','56','57','58','59'];
 function normalizePhone(raw) {
   if (raw === null || raw === undefined) return { phone: null, reason: 'فارغ' };
   let d = String(raw).replace(/[^0-9]/g, '');
