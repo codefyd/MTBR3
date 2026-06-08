@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة التحكم | منصة ولاء</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div class="app-shell" id="shell"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    const DOW_AR = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+    const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+    (async () => {
+      const session = await App.initShell('dashboard.html');
+      if (!session) return;
+      renderShell();
+      // 1) نحمّل أولًا ملخص ملفات المتبرعين (سريع) ونعرضه
+      await loadDonorsSummary();
+      // 2) بعد انتهائه نحمّل تقارير العمليات (الأثقل) ونعرضها
+      await loadOperationsReports();
+    })();
+
+    function renderShell() {
+      document.getElementById('mainArea').innerHTML = `
+        <div class="topbar">
+          <h1><i class="fa-solid fa-chart-line text-gold"></i> لوحة التحكم</h1>
+          <span class="muted" id="loadState" style="font-size:.9rem">جارٍ تحميل ملفات المتبرعين…</span>
+        </div>
+        <div class="content">
+          <!-- المرحلة 1: ملخص المتبرعين -->
+          <div class="row g-3 fade-in" style="margin-bottom:1.25rem" id="donorCards">
+            ${skeletonCard()}${skeletonCard()}${skeletonCard()}${skeletonCard()}
+          </div>
+
+          <!-- المرحلة 2: تقارير العمليات -->
+          <div id="opsReports"></div>
+        </div>`;
+    }
+
+    function skeletonCard() {
+      return `<div class="col-6 col-lg-3"><div class="stat-card"><div class="stat-head"><i class="fa-solid fa-spinner fa-spin"></i> …</div><div class="stat-value">—</div></div></div>`;
+    }
+
+    // ===== المرحلة 1 =====
+    async function loadDonorsSummary() {
+      const total    = await App.sb.from('donors').select('*', { count:'exact', head:true });
+      const active   = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','مستمر');
+      const inactive = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','خامل');
+      const targeted = await App.sb.from('donors').select('*', { count:'exact', head:true }).gt('targeted_count', 0);
+
+      document.getElementById('donorCards').innerHTML = `
+        ${statCard('fa-user-group', 'إجمالي المتبرعين', App.fmtNum(total.count||0))}
+        ${statCard('fa-heart-pulse', 'مستمرون', App.fmtNum(active.count||0), '', false)}
+        ${statCard('fa-moon', 'خاملون', App.fmtNum(inactive.count||0), '', false)}
+        ${statCard('fa-bullhorn', 'تم استهدافهم في حملات', App.fmtNum(targeted.count||0), '', true)}`;
+
+      document.getElementById('loadState').textContent = 'جارٍ تحميل تقارير العمليات…';
+      // هيكل تحميل لتقارير العمليات
+      document.getElementById('opsReports').innerHTML =
+        `<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div>
+         <div class="muted" style="margin-top:.6rem">جارٍ احتساب تقارير العمليات…</div></div>`;
+    }
+
+    function statCard(icon, label, value, sub='', gold=false) {
+      return `<div class="col-6 col-lg-3">
+        <div class="stat-card ${gold?'is-gold':''}">
+          <div class="stat-head"><i class="fa-solid ${icon}"></i> ${label}</div>
+          <div class="stat-value">${value}</div>
+          ${sub ? `<div class="stat-sub">${sub}</div>` : ''}
+        </div></div>`;
+    }
+
+    // ===== المرحلة 2 =====
+    async function loadOperationsReports() {
+      const { data, error } = await App.sb.rpc('dashboard_stats');
+      const wrap = document.getElementById('opsReports');
+      document.getElementById('loadState').textContent = '';
+      if (error) { wrap.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
+      if (!data) { wrap.innerHTML = `<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد بيانات عمليات بعد.</div>`; return; }
+
+      const bestDow  = data.best_dow;
+      const bestDate = data.best_date;
+      const yearNow  = new Date().getFullYear();
+
+      // صفّ الأرقام المالية
+      const moneyRow = `
+        <div class="row g-3 fade-in" style="margin-bottom:1.25rem">
+          ${statCard('fa-calendar-day', 'تبرعات الشهر الحالي', App.fmtMoney(data.month_sum), `${App.fmtNum(data.month_count)} تبرع`, true)}
+          ${statCard('fa-sack-dollar', 'تبرعات السنة الحالية', App.fmtMoney(data.year_sum), `${App.fmtNum(data.year_count)} تبرع`, true)}
+          ${statCard('fa-user-check', 'متبرعون فريدون هذا الشهر', App.fmtNum(data.unique_month))}
+          ${statCard('fa-hand-holding-dollar', 'متوسط التبرع (السنة)', App.fmtMoney(data.year_count ? data.year_sum/data.year_count : 0))}
+        </div>`;
+
+      // صندوقا التميّز (أفضل يوم بالأسبوع هذا الشهر + أفضل تاريخ بالسنة)
+      const highlightRow = `
+        <div class="row g-3 fade-in" style="margin-bottom:1.25rem">
+          <div class="col-12 col-lg-6">
+            <div class="highlight-box">
+              <div class="hb-label"><i class="fa-solid fa-trophy"></i> أفضل يوم في الأسبوع (هذا الشهر)</div>
+              <div class="hb-value">${bestDow ? DOW_AR[bestDow.dow] : '—'}</div>
+              <div class="hb-sub">${bestDow ? `${App.fmtNum(bestDow.cnt)} تبرع · ${App.fmtMoney(bestDow.amt)}` : 'لا بيانات'}</div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="highlight-box">
+              <div class="hb-label"><i class="fa-solid fa-star"></i> أعلى يوم تبرعات (هذه السنة)</div>
+              <div class="hb-value">${bestDate ? App.fmtDate(bestDate.op_date) : '—'}</div>
+              <div class="hb-sub">${bestDate ? `${App.fmtMoney(bestDate.amt)} · ${App.fmtNum(bestDate.cnt)} تبرع` : 'لا بيانات'}</div>
+            </div>
+          </div>
+        </div>`;
+
+      // رسم: التبرعات الشهرية خلال السنة
+      const monthly = data.monthly || [];
+      const maxMonthly = Math.max(1, ...monthly.map(m => Number(m.amt)));
+      const monthlyBars = monthly.length ? monthly.map(m => barRow(MONTHS_AR[m.mo-1], Number(m.amt), maxMonthly, App.fmtMoney(m.amt))).join('')
+        : '<div class="muted">لا بيانات للسنة الحالية.</div>';
+
+      // رسم: توزيع التبرعات على أيام الأسبوع (هذه السنة)
+      const dowArr = Array(7).fill(0);
+      (data.dow_dist || []).forEach(d => dowArr[d.dow] = Number(d.cnt));
+      const maxDow = Math.max(1, ...dowArr);
+      // ترتيب العرض: السبت..الجمعة
+      const order = [6,0,1,2,3,4,5];
+      const dowBars = order.map(i => barRow(DOW_AR[i], dowArr[i], maxDow, App.fmtNum(dowArr[i]))).join('');
+
+      // رسم: المتبرعون الفريدون عبر السنوات
+      const byYear = data.donors_by_year || [];
+      const maxYear = Math.max(1, ...byYear.map(y => Number(y.c)));
+      const yearBars = byYear.length ? byYear.map(y => barRow(String(y.yr), Number(y.c), maxYear, App.fmtNum(y.c))).join('')
+        : '<div class="muted">لا بيانات.</div>';
+
+      wrap.innerHTML = `
+        ${moneyRow}
+        ${highlightRow}
+        <div class="row g-3 fade-in">
+          <div class="col-12 col-lg-6">
+            <div class="chart-card">
+              <h3><i class="fa-solid fa-chart-column"></i> التبرعات الشهرية — ${yearNow}</h3>
+              ${monthlyBars}
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="chart-card">
+              <h3><i class="fa-solid fa-calendar-week"></i> توزيع التبرعات على أيام الأسبوع (هذه السنة)</h3>
+              ${dowBars}
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="chart-card">
+              <h3><i class="fa-solid fa-users-between-lines"></i> المتبرعون الفريدون عبر السنوات</h3>
+              ${yearBars}
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="chart-card">
+              <h3><i class="fa-solid fa-circle-info"></i> ملخص سريع</h3>
+              <div class="bar-row" style="grid-template-columns:1fr auto"><span class="bar-label">إجمالي تبرعات السنة</span><span class="bar-val">${App.fmtMoney(data.year_sum)}</span></div>
+              <div class="bar-row" style="grid-template-columns:1fr auto"><span class="bar-label">عدد تبرعات السنة</span><span class="bar-val">${App.fmtNum(data.year_count)}</span></div>
+              <div class="bar-row" style="grid-template-columns:1fr auto"><span class="bar-label">عدد تبرعات الشهر</span><span class="bar-val">${App.fmtNum(data.month_count)}</span></div>
+              <div class="bar-row" style="grid-template-columns:1fr auto"><span class="bar-label">متوسط تبرعات اليوم الواحد (السنة)</span><span class="bar-val">${App.fmtMoney(bestDateAvg(data))}</span></div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function bestDateAvg(data) {
+      // تقدير بسيط: إجمالي السنة ÷ عدد الأيام الفريدة (تقريبي عبر توزيع الأسبوع)
+      const totalDays = (data.dow_dist || []).reduce((s,d)=>s+Number(d.cnt),0);
+      return totalDays ? data.year_sum / Math.max(1, totalDays) : 0;
+    }
+
+    function barRow(label, value, max, displayVal) {
+      const pct = Math.round((value / max) * 100);
+      return `<div class="bar-row">
+        <span class="bar-label">${label}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <span class="bar-val">${displayVal}</span>
+      </div>`;
+    }
+  </script>
+</body>
+</html>

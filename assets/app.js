@@ -16,7 +16,7 @@ async function guard(page) {
     return null;
   }
   if (page === 'login' && session) {
-    location.href = 'donors.html';
+    location.href = 'dashboard.html';
     return null;
   }
   return session;
@@ -24,6 +24,7 @@ async function guard(page) {
 
 // ------- الشريط الجانبي -------
 const NAV = [
+  { href: 'dashboard.html', label: 'لوحة التحكم', icon: 'fa-chart-line' },
   { href: 'operations.html', label: 'العمليات', icon: 'fa-receipt' },
   { href: 'donors.html', label: 'ملفات المتبرعين', icon: 'fa-users' },
   { href: 'campaigns.html', label: 'المستهدفين في الحملات', icon: 'fa-bullhorn' },
@@ -94,18 +95,22 @@ function toast(msg, type = 'ok') {
   _toastTimer = setTimeout(() => el.remove(), 4500);
 }
 
-// ------- أدوات التنسيق -------
+// ------- أدوات التنسيق ------- (أرقام إنجليزية/لاتينية في كل الواجهة)
+function fmtNum(n) {
+  if (n === null || n === undefined || n === '') return '0';
+  return Number(n).toLocaleString('en-US');
+}
 function fmtMoney(n) {
-  if (n === null || n === undefined) return '٠';
-  return Number(n).toLocaleString('ar-SA', { maximumFractionDigits: 2 });
+  if (n === null || n === undefined) return '0';
+  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
 function fmtDate(s) {
   if (!s) return '—';
-  return new Date(s).toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  return new Date(s).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 function fmtDateTime(s) {
   if (!s) return '—';
-  return new Date(s).toLocaleString('ar-SA', {
+  return new Date(s).toLocaleString('en-GB', {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
@@ -194,6 +199,6 @@ async function rpcInBatches(fnName, rows, batchSize = 500) {
 }
 
 window.App = {
-  sb, guard, initShell, toast, fmtMoney, fmtDate, fmtDateTime, esc,
+  sb, guard, initShell, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc,
   cleanPhone, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, PAGE_SIZE,
 };

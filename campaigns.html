@@ -129,7 +129,7 @@
       const { data, count:c, error } = await q;
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
       count = c || 0;
-      document.getElementById('cnt').textContent = `(${count.toLocaleString('ar-SA')} سجل)`;
+      document.getElementById('cnt').textContent = `(${count.toLocaleString('en-US')} سجل)`;
       if (!data.length) {
         area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد سجلات استهداف بعد.</div>';
         return;
@@ -174,7 +174,7 @@
       back.innerHTML = `
         <div class="modal-box">
           <div class="panel-head">
-            <h2 style="color:var(--c-danger)"><i class="fa-solid fa-triangle-exclamation"></i> أرقام لم تُعالَج (${rejected.length.toLocaleString('ar-SA')})</h2>
+            <h2 style="color:var(--c-danger)"><i class="fa-solid fa-triangle-exclamation"></i> أرقام لم تُعالَج (${rejected.length.toLocaleString('en-US')})</h2>
             <button class="btn-x btn-ghost btn-sm" id="rjClose"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="panel-body" style="overflow:auto">

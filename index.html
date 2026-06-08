@@ -15,7 +15,7 @@
   <script>
     (async () => {
       const { data: { session } } = await App.sb.auth.getSession();
-      location.href = session ? 'donors.html' : 'login.html';
+      location.href = session ? 'dashboard.html' : 'login.html';
     })();
   </script>
 </body>

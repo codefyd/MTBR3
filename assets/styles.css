@@ -1,16 +1,37 @@
+/* الخط الأساسي المرفق */
+@font-face {
+  font-family: 'Foda';
+  src: url('fonts/foda.ttf') format('truetype');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =====================================================================
+   لوحة ألوان مختصرة: 4 ألوان أساسية فقط
+   1) الأساسي (أخضر داكن)  2) المميّز (ذهبي)  3) الحبر (نص)  4) الخلفية
+   مع تدرّجات شفافة مشتقة منها لتقليل عدد الألوان الفعلية.
+   ===================================================================== */
 :root {
-  --c-bg:          #f4f1ea;
-  --c-surface:     #ffffff;
-  --c-ink:         #1f2d2b;
-  --c-ink-soft:    #5a6a66;
+  /* اللون 1 — الأساسي */
   --c-primary:     #0f5e54;
   --c-primary-dk:  #0a4640;
   --c-primary-lt:  #e4efed;
+  /* اللون 2 — المميّز (ذهبي) */
   --c-gold:        #c79a3c;
   --c-gold-lt:     #f6edda;
-  --c-line:        #e3ddd1;
-  --c-danger:      #b3402f;
-  --c-success:     #2f8f6a;
+  /* اللون 3 — الحبر / النص */
+  --c-ink:         #1f2d2b;
+  --c-ink-soft:    #5a6a66;
+  /* اللون 4 — الخلفية والأسطح */
+  --c-bg:          #f4f1ea;
+  --c-surface:     #ffffff;
+
+  /* مشتقات شفافة من الألوان الأربعة (لا ألوان جديدة) */
+  --c-line:        rgba(31,45,43,.12);
+  --c-line-soft:   rgba(31,45,43,.08);
+  --c-danger:      var(--c-gold);          /* نستخدم الذهبي للتنبيه بدل لون خامس */
+  --c-success:     var(--c-primary);       /* نستخدم الأساسي للنجاح */
 
   --radius:        16px;
   --radius-sm:     10px;
@@ -23,9 +44,12 @@
 * { box-sizing: border-box; }
 html, body {
   padding: 0; margin: 0;
-  font-family: 'Amiri', 'Times New Roman', serif;
+  font-family: 'Foda', 'Amiri', 'Times New Roman', serif;
   background: var(--c-bg); color: var(--c-ink);
   font-size: 17px; -webkit-font-smoothing: antialiased;
+  /* فرض الأرقام الإنجليزية (اللاتينية) في كامل الواجهة */
+  font-variant-numeric: lining-nums;
+  font-feature-settings: "lnum" 1;
 }
 body {
   background-image:
@@ -103,9 +127,17 @@ a:hover { color: var(--c-primary-dk); }
 table.data { width: 100%; border-collapse: collapse; font-size: .98rem; white-space: nowrap; }
 table.data thead th {
   background: var(--c-primary-lt); color: var(--c-primary-dk); font-weight: 700;
-  padding: .7rem .85rem; text-align: right; position: sticky; top: 0; border-bottom: 2px solid var(--c-primary);
+  padding: .7rem .85rem; text-align: center; position: sticky; top: 0; border-bottom: 2px solid var(--c-primary);
+  border-inline-start: 1px dashed var(--c-line-soft);
 }
-table.data tbody td { padding: .65rem .85rem; border-bottom: 1px solid var(--c-line); color: var(--c-ink); }
+table.data tbody td {
+  padding: .65rem .85rem; border-bottom: 1px solid var(--c-line); color: var(--c-ink);
+  text-align: center;
+  border-inline-start: 1px dashed var(--c-line-soft);
+}
+/* حدود عمودية متقطعة خفيفة جدًا — بلا حد على أول خلية */
+table.data thead th:first-child,
+table.data tbody td:first-child { border-inline-start: none; }
 table.data tbody tr { transition: background var(--t-fast); }
 table.data tbody tr:hover { background: var(--c-gold-lt); }
 
@@ -210,17 +242,21 @@ label.lbl { font-size: .9rem; color: var(--c-ink-soft); margin-bottom: .3rem; di
 }
 
 /* ===== تحسينات جدول ملفات المتبرعين ===== */
-/* ارتفاع صف ثابت ومحاذاة علوية لتساوي الصفوف */
+/* ارتفاع صف ثابت ومحاذاة وسطية لتساوي الصفوف */
 table.data.donors-table tbody td { vertical-align: middle; height: 56px; }
-/* خلية المشاريع: تلف داخل نفسها بدون كسر ترتيب الجدول */
-td.projects-cell {
-  white-space: normal !important;
-  min-width: 180px; max-width: 240px;
-  max-height: 56px; overflow-y: auto;
-  line-height: 1.5;
+
+/* خلية المشاريع: مطوية افتراضيًا — تظهر كاملة عند النقر فقط */
+td.projects-cell { white-space: nowrap !important; min-width: 130px; }
+.proj-trigger {
+  display: inline-flex; align-items: center; gap: .4rem; cursor: pointer;
+  background: var(--c-primary-lt); color: var(--c-primary-dk);
+  border: 1px solid var(--c-line); border-radius: 999px;
+  padding: .25rem .7rem; font-family: inherit; font-size: .85rem; font-weight: 700;
+  transition: all var(--t-fast);
 }
-td.projects-cell::-webkit-scrollbar { width: 5px; }
-td.projects-cell::-webkit-scrollbar-thumb { background: var(--c-line); border-radius: 4px; }
+.proj-trigger:hover { background: var(--c-primary); color: #fff; border-color: var(--c-primary); }
+.proj-trigger i { font-size: .75rem; }
+
 /* أعمدة الأيام: لون خلية خفيف */
 table.data.donors-table td.col-day,
 table.data.donors-table th.col-day { background: rgba(15,94,84,.055); }
@@ -229,6 +265,14 @@ table.data.donors-table tbody tr:hover td.col-day { background: rgba(15,94,84,.1
 table.data.donors-table td.col-period,
 table.data.donors-table th.col-period { background: rgba(199,154,60,.08); }
 table.data.donors-table tbody tr:hover td.col-period { background: rgba(199,154,60,.16); }
+
+/* رؤوس الأعمدة القابلة للترتيب */
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { background: var(--c-primary); color: #fff; }
+th.sortable .sort-ind { opacity: .45; margin-inline-start: .3rem; font-size: .72rem; }
+th.sortable.sorted .sort-ind { opacity: 1; color: var(--c-gold); }
+th.sortable.sorted { background: var(--c-primary); color: #fff; }
+th.sortable.sorted .sort-ind { color: var(--c-gold); }
 
 /* قائمة منسدلة متعددة الاختيار (المشاريع) */
 .multi-dd { position: relative; }
@@ -251,3 +295,46 @@ table.data.donors-table tbody tr:hover td.col-period { background: rgba(199,154,
 .multi-dd-opt:hover { background: var(--c-primary-lt); }
 .multi-dd-opt input { width: 16px; height: 16px; accent-color: var(--c-primary); }
 .multi-dd-count { background: var(--c-primary); color:#fff; border-radius:999px; padding:0 .5rem; font-size:.8rem; }
+
+/* ===== لوحة التحكم (التبويب الرئيسي) ===== */
+.dash-grid { display: grid; gap: 1rem; }
+.stat-card {
+  background: var(--c-surface); border: 1px solid var(--c-line);
+  border-radius: var(--radius); padding: 1.2rem 1.3rem; box-shadow: var(--shadow-sm);
+  position: relative; overflow: hidden; transition: transform var(--t-med), box-shadow var(--t-med);
+}
+.stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+.stat-card::before {
+  content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
+  width: 4px; background: linear-gradient(180deg, var(--c-primary), var(--c-gold)); opacity: .85;
+}
+.stat-card.is-gold::before { background: linear-gradient(180deg, var(--c-gold), var(--c-primary)); }
+.stat-head { display: flex; align-items: center; gap: .6rem; color: var(--c-ink-soft); font-size: .95rem; margin-bottom: .5rem; }
+.stat-head i { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--c-primary-lt); color: var(--c-primary); font-size: 1rem; }
+.stat-card.is-gold .stat-head i { background: var(--c-gold-lt); color: var(--c-gold); }
+.stat-value { font-size: 1.75rem; font-weight: 700; line-height: 1.15; color: var(--c-ink); }
+.stat-sub { font-size: .82rem; color: var(--c-ink-soft); margin-top: .25rem; }
+
+.chart-card {
+  background: var(--c-surface); border: 1px solid var(--c-line);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 1.25rem;
+}
+.chart-card h3 { margin: 0 0 1rem; font-size: 1.08rem; display: flex; align-items: center; gap: .5rem; }
+.chart-card h3 i { color: var(--c-gold); }
+
+/* رسم أعمدة بسيط بدون مكتبات */
+.bar-row { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: .6rem; margin-bottom: .6rem; }
+.bar-row .bar-label { font-size: .9rem; color: var(--c-ink-soft); text-align: start; }
+.bar-track { background: var(--c-primary-lt); border-radius: 999px; height: 18px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--c-primary), var(--c-gold)); transition: width .6s var(--t-med); }
+.bar-val { font-size: .85rem; font-weight: 700; color: var(--c-ink); min-width: 48px; text-align: start; }
+
+.highlight-box {
+  background: linear-gradient(135deg, var(--c-primary), var(--c-primary-dk));
+  color: #fff; border-radius: var(--radius); padding: 1.4rem 1.5rem; box-shadow: var(--shadow-md);
+}
+.highlight-box .hb-label { color: #d8e6e3; font-size: .95rem; display: flex; align-items: center; gap: .5rem; }
+.highlight-box .hb-label i { color: var(--c-gold); }
+.highlight-box .hb-value { font-size: 1.9rem; font-weight: 700; margin-top: .4rem; }
+.highlight-box .hb-sub { color: #cfe0dd; font-size: .85rem; margin-top: .25rem; }

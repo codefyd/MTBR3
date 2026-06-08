@@ -29,6 +29,15 @@
     ];
 
     let page = 0, count = 0, categories = [], projectsList = [], showAdvanced = false;
+    // حالة الترتيب حسب رأس العمود
+    let sortCol = 'total_amount', sortAsc = false;
+    const SORTABLE = {
+      donor_name:1, phone:1, first_donation:1, last_donation:1,
+      total_amount:1, donations_count:1, status:1, category:1,
+      sat_count:1, sun_count:1, mon_count:1, tue_count:1, wed_count:1, thu_count:1, fri_count:1,
+      period_morning:1, period_noon:1, period_evening:1, period_night:1,
+      targeted_count:1, last_targeted:1,
+    };
     // الفلاتر متعددة الاختيار + حدّ أدنى لعدد مرات اليوم/الفترة
     const f = {
       search:'', statuses:[], cats:[], projects:[], minCount:'', maxCount:'', minTotal:'',
@@ -120,22 +129,26 @@
               </div>
             </div>
             <div class="panel-body">
+              <!-- مجموعة 1: البحث والتصنيف الأساسي -->
               <div class="row g-3">
-                <div class="col-12 col-md-4"><label class="lbl">بحث (اسم / جوال)</label><input class="field" id="fSearch" placeholder="ابحث..." /></div>
-                <div class="col-6 col-md-4">
+                <div class="col-12">
+                  <label class="lbl">بحث (اسم / جوال)</label>
+                  <input class="field" id="fSearch" placeholder="اكتب اسمًا أو رقم جوال..." />
+                </div>
+                <div class="col-12 col-md-6">
                   <label class="lbl">حالة العميل <span class="muted">(تحديد متعدد)</span></label>
                   <div class="chip-group" id="grpStatus">
                     <button type="button" class="chip-toggle" data-v="مستمر">مستمر</button>
                     <button type="button" class="chip-toggle" data-v="خامل">خامل</button>
                   </div>
                 </div>
-                <div class="col-6 col-md-4">
+                <div class="col-12 col-md-6">
                   <label class="lbl">فئة العميل <span class="muted">(تحديد متعدد)</span></label>
                   <div class="chip-group" id="grpCat">
                     ${categories.map(c => `<button type="button" class="chip-toggle" data-v="${App.esc(c)}">${App.esc(c)}</button>`).join('')}
                   </div>
                 </div>
-                <div class="col-12 col-md-6">
+                <div class="col-12">
                   <label class="lbl">المشاريع <span class="muted">(اختيار متعدد — دعم أيٍّ منها)</span></label>
                   <div class="multi-dd" id="ddProjects">
                     <button type="button" class="field multi-dd-toggle" id="ddProjBtn">
@@ -153,15 +166,24 @@
                   </div>
                 </div>
               </div>
-              <div class="${showAdvanced ? '' : 'hidden'}" id="advRow" style="margin-top:1rem">
+
+              <!-- مجموعة 2: الفلترة المتقدمة -->
+              <div class="${showAdvanced ? '' : 'hidden'}" id="advRow" style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px dashed var(--c-line)">
+                <!-- 2-أ: نطاقات عددية ومالية -->
                 <div class="row g-3">
                   <div class="col-6 col-md-3"><label class="lbl">عدد التبرعات (من)</label><input type="number" class="field" id="fMinCount" /></div>
                   <div class="col-6 col-md-3"><label class="lbl">عدد التبرعات (إلى)</label><input type="number" class="field" id="fMaxCount" /></div>
                   <div class="col-6 col-md-3"><label class="lbl">إجمالي التبرعات (أكثر من)</label><input type="number" class="field" id="fMinTotal" /></div>
                   <div class="col-6 col-md-3"><label class="lbl">الاستهداف في حملة</label>
                     <select class="field" id="fTargeted"><option value="">الكل</option><option value="yes">تم استهدافه</option><option value="no">لم يُستهدف</option></select></div>
+                </div>
+                <!-- 2-ب: نطاق آخر تبرع -->
+                <div class="row g-3" style="margin-top:.25rem">
                   <div class="col-6 col-md-3"><label class="lbl">آخر تبرع بعد</label><input type="date" class="field" id="fLastAfter" /></div>
                   <div class="col-6 col-md-3"><label class="lbl">آخر تبرع قبل</label><input type="date" class="field" id="fLastBefore" /></div>
+                </div>
+                <!-- 2-ج: أيام وأوقات التبرع -->
+                <div class="row g-3" style="margin-top:.25rem">
                   <div class="col-12 col-md-6">
                     <label class="lbl">يوم التبرع <span class="muted">(تحديد متعدد — تبرّع في أيٍّ منها)</span></label>
                     <div class="chip-group" id="grpDays">
@@ -188,7 +210,7 @@
           </div>
 
           <div class="panel fade-in">
-            <div class="panel-head"><h2>منصة ولاء <span class="muted" id="cnt" style="font-size:.9rem;font-weight:400"></span></h2></div>
+            <div class="panel-head"><h2>قائمة المتبرعين <span class="muted" id="cnt" style="font-size:.9rem;font-weight:400"></span></h2></div>
             <div class="panel-body"><div id="tableArea"></div></div>
           </div>
         </div>`;
@@ -332,9 +354,9 @@
       const active = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','مستمر');
       const inactive = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','خامل');
       const { data: sum } = await App.sb.rpc('donors_total_sum');
-      document.getElementById('kpiTotal').textContent = (total.count || 0).toLocaleString('ar-SA');
-      document.getElementById('kpiActive').textContent = (active.count || 0).toLocaleString('ar-SA');
-      document.getElementById('kpiInactive').textContent = (inactive.count || 0).toLocaleString('ar-SA');
+      document.getElementById('kpiTotal').textContent = (total.count || 0).toLocaleString('en-US');
+      document.getElementById('kpiActive').textContent = (active.count || 0).toLocaleString('en-US');
+      document.getElementById('kpiInactive').textContent = (inactive.count || 0).toLocaleString('en-US');
       document.getElementById('kpiSum').textContent = App.fmtMoney(sum || 0);
     }
 
@@ -343,42 +365,50 @@
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
 
       let q = App.sb.from('donors').select('*', { count:'exact' })
-        .order('total_amount', { ascending:false })
+        .order(sortCol, { ascending: sortAsc, nullsFirst: false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       q = buildQuery(q);
       const { data, count:c, error } = await q;
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
       count = c || 0;
-      document.getElementById('cnt').textContent = `(${count.toLocaleString('ar-SA')} نتيجة)`;
+      document.getElementById('cnt').textContent = `(${App.fmtNum(count)} نتيجة)`;
 
       if (!data.length) {
         area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد ملفات متبرعين مطابقة.</div>';
         return;
       }
 
-      const dayTh = DAY_COLS.map(d => `<th class="col-day">${d.label}</th>`).join('');
-      const periodTh = PERIOD_COLS.map(d => `<th class="col-period">${d.label}</th>`).join('');
+      // رأس عمود قابل للترتيب
+      const sortableTh = (key, label, extraCls='') => {
+        const sorted = sortCol === key;
+        const ind = sorted ? (sortAsc ? 'fa-arrow-up-long' : 'fa-arrow-down-long') : 'fa-sort';
+        return `<th class="sortable ${sorted?'sorted':''} ${extraCls}" data-sort="${key}">${label}<i class="fa-solid ${ind} sort-ind"></i></th>`;
+      };
+
+      const dayTh = DAY_COLS.map(d => sortableTh(d.key, d.label, 'col-day')).join('');
+      const periodTh = PERIOD_COLS.map(d => sortableTh(d.key, d.label, 'col-period')).join('');
 
       const rowsHtml = data.map(r => {
         const projects = (r.projects || []);
-        const chips = projects.length
-          ? projects.map(p => `<span class="chip">${App.esc(p)}</span>`).join('')
+        // المشاريع مطوية: زر يفتح نافذة بكل المشاريع
+        const projCell = projects.length
+          ? `<button class="proj-trigger" data-proj="${App.esc(r.phone)}"><i class="fa-solid fa-list"></i> ${App.fmtNum(projects.length)} مشروع</button>`
           : '<span class="muted">—</span>';
-        const dayTd = DAY_COLS.map(d => `<td class="col-day">${r[d.key] || 0}</td>`).join('');
-        const periodTd = PERIOD_COLS.map(d => `<td class="col-period">${r[d.key] || 0}</td>`).join('');
+        const dayTd = DAY_COLS.map(d => `<td class="col-day">${App.fmtNum(r[d.key] || 0)}</td>`).join('');
+        const periodTd = PERIOD_COLS.map(d => `<td class="col-period">${App.fmtNum(r[d.key] || 0)}</td>`).join('');
         const statusBadge = r.status === 'مستمر' ? 'badge-active' : 'badge-inactive';
         return `<tr>
           <td>${App.esc(r.donor_name) || '—'}</td>
-          <td dir="ltr" style="text-align:right">${App.esc(r.phone)}</td>
+          <td dir="ltr">${App.esc(r.phone)}</td>
           <td>${App.fmtDate(r.first_donation)}</td>
           <td>${App.fmtDate(r.last_donation)}</td>
           <td style="font-weight:700">${App.fmtMoney(r.total_amount)}</td>
-          <td>${r.donations_count}</td>
-          <td class="projects-cell">${chips}</td>
+          <td>${App.fmtNum(r.donations_count)}${r.no_time_count ? `<i class="fa-solid fa-clock muted" title="منها ${App.fmtNum(r.no_time_count)} بلا تاريخ/وقت — لا تظهر في تحليل الأيام والأوقات" style="font-size:.7rem;margin-inline-start:.3rem;opacity:.6"></i>` : ''}</td>
+          <td class="projects-cell" data-projlist='${App.esc(JSON.stringify(projects))}' data-name="${App.esc(r.donor_name||'')}">${projCell}</td>
           <td><span class="badge-x ${statusBadge}">${App.esc(r.status) || '—'}</span></td>
           <td><span class="badge-x badge-cat">${App.esc(r.category) || '—'}</span></td>
           ${dayTd}${periodTd}
-          <td>${r.targeted_count || 0}</td>
+          <td>${App.fmtNum(r.targeted_count || 0)}</td>
           <td>${App.fmtDate(r.last_targeted)}</td>
         </tr>`;
       }).join('');
@@ -387,14 +417,61 @@
       area.innerHTML = `
         <div class="table-wrap"><table class="data donors-table">
           <thead><tr>
-            <th>الاسم</th><th>الجوال</th><th>أول تبرع</th><th>آخر تبرع</th>
-            <th>الإجمالي</th><th>العدد</th><th>المشاريع</th><th>الحالة</th><th>الفئة</th>
-            ${dayTh}${periodTh}<th>مرات الاستهداف</th><th>آخر استهداف</th>
+            ${sortableTh('donor_name','الاسم')}${sortableTh('phone','الجوال')}
+            ${sortableTh('first_donation','أول تبرع')}${sortableTh('last_donation','آخر تبرع')}
+            ${sortableTh('total_amount','الإجمالي')}${sortableTh('donations_count','العدد')}
+            <th>المشاريع</th>
+            ${sortableTh('status','الحالة')}${sortableTh('category','الفئة')}
+            ${dayTh}${periodTh}
+            ${sortableTh('targeted_count','مرات الاستهداف')}${sortableTh('last_targeted','آخر استهداف')}
           </tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table></div>
         ${pagerHtml(pages)}`;
       wirePager(pages);
+      wireSort();
+      wireProjectCells();
+    }
+
+    // النقر على رأس عمود: نفس العمود يبدّل الاتجاه، عمود جديد يبدأ تنازليًا
+    function wireSort() {
+      document.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+          const key = th.dataset.sort;
+          if (sortCol === key) { sortAsc = !sortAsc; }
+          else { sortCol = key; sortAsc = false; }
+          page = 0; load();
+        });
+      });
+    }
+
+    // النقر على خلية المشاريع يفتح نافذة بكل مشاريع المتبرع
+    function wireProjectCells() {
+      document.querySelectorAll('.proj-trigger').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const cell = e.currentTarget.closest('.projects-cell');
+          let list = [];
+          try { list = JSON.parse(cell.dataset.projlist || '[]'); } catch {}
+          openProjectsModal(cell.dataset.name || '', list);
+        });
+      });
+    }
+
+    function openProjectsModal(name, projects) {
+      const back = document.createElement('div');
+      back.className = 'modal-back';
+      const chips = projects.map(p => `<span class="chip" style="font-size:.92rem;padding:.3rem .7rem;margin:.2rem">${App.esc(p)}</span>`).join('');
+      back.innerHTML = `
+        <div class="modal-box" style="max-width:520px">
+          <div class="panel-head">
+            <h2><i class="fa-solid fa-list text-gold"></i> مشاريع ${App.esc(name) || 'المتبرع'} <span class="muted" style="font-weight:400;font-size:.9rem">(${App.fmtNum(projects.length)})</span></h2>
+            <button class="btn-x btn-ghost btn-sm" id="pjClose"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="panel-body" style="overflow:auto;text-align:right">${chips || '<span class="muted">لا مشاريع</span>'}</div>
+        </div>`;
+      document.body.appendChild(back);
+      back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+      document.getElementById('pjClose').addEventListener('click', () => back.remove());
     }
 
     function pagerHtml(pages) {
@@ -413,7 +490,7 @@
     // =================== الحصالة ===================
     function updateJarUI() {
       const el = document.getElementById('jarCount');
-      if (el) el.textContent = jar.size.toLocaleString('ar-SA');
+      if (el) el.textContent = jar.size.toLocaleString('en-US');
       const undo = document.getElementById('undoJar');
       const clear = document.getElementById('clearJar');
       if (undo) undo.disabled = jarBatches.length === 0;
@@ -441,7 +518,7 @@
         }
         if (addedNow.length) jarBatches.push(addedNow); // سجّل الدفعة للتراجع
         saveJar();
-        App.toast(`أُضيف ${addedNow.length.toLocaleString('ar-SA')} متبرع جديد (الإجمالي ${jar.size.toLocaleString('ar-SA')}).`, 'ok');
+        App.toast(`أُضيف ${addedNow.length.toLocaleString('en-US')} متبرع جديد (الإجمالي ${jar.size.toLocaleString('en-US')}).`, 'ok');
       } catch (e) {
         App.toast(e.message || 'تعذّرت الإضافة', 'err');
       } finally {
@@ -456,7 +533,7 @@
       const last = jarBatches.pop();
       last.forEach(p => jar.delete(p));
       saveJar();
-      App.toast(`تم التراجع عن آخر إضافة (${last.length.toLocaleString('ar-SA')} متبرع).`, 'ok');
+      App.toast(`تم التراجع عن آخر إضافة (${last.length.toLocaleString('en-US')} متبرع).`, 'ok');
     }
 
     // تفريغ الحصالة بالكامل
@@ -476,7 +553,7 @@
       back.innerHTML = `
         <div class="modal-box">
           <div class="panel-head">
-            <h2><i class="fa-solid fa-piggy-bank text-gold"></i> الحصالة (${phones.length.toLocaleString('ar-SA')})</h2>
+            <h2><i class="fa-solid fa-piggy-bank text-gold"></i> الحصالة (${phones.length.toLocaleString('en-US')})</h2>
             <button class="btn-x btn-ghost btn-sm" id="jarClose"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="panel-body" style="overflow:auto">
@@ -570,7 +647,7 @@
       window.XLSX.utils.book_append_sheet(wb, ws, 'الحصالة');
       const today = new Date().toISOString().slice(0, 10);
       window.XLSX.writeFile(wb, `الحصالة-${today}.xlsx`);
-      App.toast(`تم تصدير ${rows.length.toLocaleString('ar-SA')} متبرع.`, 'ok');
+      App.toast(`تم تصدير ${rows.length.toLocaleString('en-US')} متبرع.`, 'ok');
     }
   </script>
 </body>

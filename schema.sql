@@ -128,6 +128,7 @@ create table if not exists donors (
   period_noon         integer default 0,   -- 12م - 3م
   period_evening      integer default 0,   -- 4م - 6:59م
   period_night        integer default 0,   -- 7م - 3:59ص
+  no_time_count       integer default 0,   -- عمليات بلا تاريخ/وقت صالح
   targeted_count      integer default 0,
   last_targeted       timestamptz,
   updated_at          timestamptz default now()
@@ -264,42 +265,79 @@ begin
 
   truncate table donors;
 
+  -- نحسب لكل عملية فريدة (phone + operation_no) ختمًا زمنيًا واحدًا فقط
+  -- (أقدم op_datetime غير فارغ للعملية). بهذا تُحسب العملية مرة واحدة في
+  -- تحليل الأيام/الأوقات، فيتطابق مجموع الأيام (ومجموع الفترات) مع عدد التبرعات
+  -- باستثناء العمليات التي لا تملك تاريخًا/وقتًا صالحًا.
   insert into donors (
     phone, donor_name, first_donation, last_donation,
     total_amount, donations_count, projects,
     sat_count, sun_count, mon_count, tue_count, wed_count, thu_count, fri_count,
-    period_morning, period_noon, period_evening, period_night
+    period_morning, period_noon, period_evening, period_night, no_time_count
   )
   select
-    o.phone,
-    (array_agg(o.donor_name order by o.op_datetime desc nulls last))[1],
-    min(o.op_datetime),
-    max(o.op_datetime),
-    coalesce(sum(o.total), 0),
-    count(distinct o.operation_no),
-    array(
-      select distinct p from unnest(array_agg(o.project)) as p
-      where p is not null and btrim(p) <> ''
-    ),
-    count(distinct o.operation_no) filter (where dow = 6),  -- السبت
-    count(distinct o.operation_no) filter (where dow = 0),  -- الأحد
-    count(distinct o.operation_no) filter (where dow = 1),  -- الاثنين
-    count(distinct o.operation_no) filter (where dow = 2),  -- الثلاثاء
-    count(distinct o.operation_no) filter (where dow = 3),  -- الأربعاء
-    count(distinct o.operation_no) filter (where dow = 4),  -- الخميس
-    count(distinct o.operation_no) filter (where dow = 5),  -- الجمعة
-    count(distinct o.operation_no) filter (where hr >= 4  and hr < 12),  -- 4ص-11:59ص
-    count(distinct o.operation_no) filter (where hr >= 12 and hr < 16),  -- 12م-3م
-    count(distinct o.operation_no) filter (where hr >= 16 and hr < 19),  -- 4م-6:59م
-    count(distinct o.operation_no) filter (where hr >= 19 or  hr < 4)    -- 7م-3:59ص
+    agg.phone,
+    agg.donor_name,
+    agg.first_donation,
+    agg.last_donation,
+    agg.total_amount,
+    agg.donations_count,
+    agg.projects,
+    coalesce(opx.sat_count,0), coalesce(opx.sun_count,0), coalesce(opx.mon_count,0),
+    coalesce(opx.tue_count,0), coalesce(opx.wed_count,0), coalesce(opx.thu_count,0),
+    coalesce(opx.fri_count,0),
+    coalesce(opx.period_morning,0), coalesce(opx.period_noon,0),
+    coalesce(opx.period_evening,0), coalesce(opx.period_night,0),
+    -- العمليات الفريدة بلا تاريخ صالح = إجمالي العمليات الفريدة - العمليات ذات التاريخ
+    greatest(agg.donations_count - coalesce(opx.timed_ops,0), 0)
   from (
-    select *,
-      extract(dow  from (op_datetime at time zone 'Asia/Riyadh'))::int as dow,
-      extract(hour from (op_datetime at time zone 'Asia/Riyadh'))::int as hr
-    from operations
-    where phone is not null
-  ) o
-  group by o.phone;
+    -- تجميع على مستوى المتبرع: الإجماليات وعدد التبرعات والمشاريع
+    select
+      o.phone,
+      (array_agg(o.donor_name order by o.op_datetime desc nulls last))[1] as donor_name,
+      min(o.op_datetime) as first_donation,
+      max(o.op_datetime) as last_donation,
+      coalesce(sum(o.total), 0) as total_amount,
+      count(distinct o.operation_no) as donations_count,
+      array(
+        select distinct p from unnest(array_agg(o.project)) as p
+        where p is not null and btrim(p) <> ''
+      ) as projects
+    from operations o
+    where o.phone is not null
+    group by o.phone
+  ) agg
+  left join (
+    -- ختم زمني واحد لكل عملية فريدة ثم تجميع الأيام/الفترات
+    select
+      uo.phone,
+      count(*) filter (where dow = 6) as sat_count,
+      count(*) filter (where dow = 0) as sun_count,
+      count(*) filter (where dow = 1) as mon_count,
+      count(*) filter (where dow = 2) as tue_count,
+      count(*) filter (where dow = 3) as wed_count,
+      count(*) filter (where dow = 4) as thu_count,
+      count(*) filter (where dow = 5) as fri_count,
+      count(*) filter (where hr >= 4  and hr < 12) as period_morning,
+      count(*) filter (where hr >= 12 and hr < 16) as period_noon,
+      count(*) filter (where hr >= 16 and hr < 19) as period_evening,
+      count(*) filter (where hr >= 19 or  hr < 4)  as period_night,
+      count(*) as timed_ops
+    from (
+      select
+        phone, operation_no,
+        extract(dow  from (op_dt at time zone 'Asia/Riyadh'))::int as dow,
+        extract(hour from (op_dt at time zone 'Asia/Riyadh'))::int as hr
+      from (
+        -- صف واحد لكل (phone, operation_no): أقدم تاريخ غير فارغ للعملية
+        select phone, operation_no, min(op_datetime) as op_dt
+        from operations
+        where phone is not null and op_datetime is not null
+        group by phone, operation_no
+      ) per_op
+    ) uo
+    group by uo.phone
+  ) opx on opx.phone = agg.phone;
 
   update donors d
   set targeted_count = t.cnt, last_targeted = t.last_dt
@@ -343,6 +381,103 @@ $$;
 create or replace function donors_total_sum()
 returns numeric language sql stable as $$
   select coalesce(sum(total_amount), 0) from donors;
+$$;
+
+-- ---------------------------------------------------------------------
+-- 9.1) تقارير لوحة التحكم — كل الأرقام تُحسب من جدول العمليات مباشرة
+--       (تُحسب العملية الواحدة تبرعًا واحدًا = phone + operation_no)
+-- ---------------------------------------------------------------------
+create or replace function dashboard_stats()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  result        jsonb;
+  v_month_start timestamptz := date_trunc('month', (now() at time zone 'Asia/Riyadh'));
+  v_year_start  timestamptz := date_trunc('year',  (now() at time zone 'Asia/Riyadh'));
+begin
+  with per_op as (
+    -- صف واحد لكل عملية فريدة: المبلغ = مجموع صفوفها، التاريخ = أقدم تاريخ صالح
+    select
+      phone, operation_no,
+      sum(total)            as op_total,
+      min(op_datetime)      as op_dt
+    from operations
+    where phone is not null
+    group by phone, operation_no
+  ),
+  loc as (
+    select
+      *,
+      (op_dt at time zone 'Asia/Riyadh')               as op_local,
+      extract(dow  from (op_dt at time zone 'Asia/Riyadh'))::int as dow,
+      (op_dt at time zone 'Asia/Riyadh')::date          as op_date
+    from per_op
+    where op_dt is not null
+  ),
+  -- تبرعات الشهر الحالي
+  month_agg as (
+    select coalesce(sum(op_total),0) as sum_amt, count(*) as cnt
+    from per_op where op_dt >= v_month_start
+  ),
+  -- تبرعات السنة الحالية
+  year_agg as (
+    select coalesce(sum(op_total),0) as sum_amt, count(*) as cnt
+    from per_op where op_dt >= v_year_start
+  ),
+  -- أفضل يوم في الأسبوع خلال الشهر الحالي (حسب عدد التبرعات)
+  best_dow as (
+    select dow, count(*) as cnt, coalesce(sum(op_total),0) as amt
+    from loc where op_local >= v_month_start
+    group by dow order by cnt desc limit 1
+  ),
+  -- أفضل تاريخ (يوم) جاءت فيه أكبر تبرعات خلال السنة
+  best_date as (
+    select op_date, count(*) as cnt, coalesce(sum(op_total),0) as amt
+    from loc where op_local >= v_year_start
+    group by op_date order by amt desc limit 1
+  ),
+  -- المتبرعون الفريدون هذا الشهر
+  uniq_month as (
+    select count(distinct phone) as c from per_op where op_dt >= v_month_start
+  ),
+  -- توزيع التبرعات على أيام الأسبوع خلال السنة
+  dow_dist as (
+    select dow, count(*) as cnt
+    from loc where op_local >= v_year_start
+    group by dow
+  ),
+  -- المتبرعون الفريدون عبر السنوات
+  donors_by_year as (
+    select extract(year from op_local)::int as yr, count(distinct phone) as c
+    from loc group by yr order by yr
+  ),
+  -- التبرعات الشهرية خلال السنة الحالية (مبلغ + عدد)
+  monthly as (
+    select extract(month from op_local)::int as mo,
+           coalesce(sum(op_total),0) as amt, count(*) as cnt
+    from loc where op_local >= v_year_start
+    group by mo order by mo
+  )
+  select jsonb_build_object(
+    'month_sum',        (select sum_amt from month_agg),
+    'month_count',      (select cnt     from month_agg),
+    'year_sum',         (select sum_amt from year_agg),
+    'year_count',       (select cnt     from year_agg),
+    'unique_month',     (select c       from uniq_month),
+    'total_donors',     (select count(*) from donors),
+    'best_dow',         (select to_jsonb(best_dow)  from best_dow),
+    'best_date',        (select to_jsonb(best_date) from best_date),
+    'dow_dist',         (select coalesce(jsonb_agg(to_jsonb(dow_dist)),'[]'::jsonb) from dow_dist),
+    'donors_by_year',   (select coalesce(jsonb_agg(to_jsonb(donors_by_year)),'[]'::jsonb) from donors_by_year),
+    'monthly',          (select coalesce(jsonb_agg(to_jsonb(monthly)),'[]'::jsonb) from monthly)
+  ) into result;
+
+  return result;
+end;
 $$;
 
 -- ---------------------------------------------------------------------
@@ -396,4 +531,5 @@ grant execute on function upsert_operations(jsonb)        to authenticated;
 grant execute on function insert_campaign_targets(jsonb)  to authenticated;
 grant execute on function recalculate_donors()            to authenticated;
 grant execute on function donors_total_sum()              to authenticated;
+grant execute on function dashboard_stats()               to authenticated;
 grant execute on function update_settings(integer, jsonb) to authenticated;
