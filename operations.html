@@ -34,7 +34,7 @@
             <div class="panel-body">
               <div class="dropzone" id="dz">
                 <i class="fa-solid fa-file-arrow-up"></i>
-                <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (Excel)</div>
+                <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CVS)</div>
                 <div class="muted" style="font-size:.92rem;margin-top:.35rem">
                   الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت
                 </div>
@@ -125,7 +125,7 @@
     function resetDropzone() {
       const dz = document.getElementById('dz');
       dz.innerHTML = `<i class="fa-solid fa-file-arrow-up"></i>
-        <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (Excel)</div>
+        <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CVS)</div>
         <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت</div>
         <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />`;
       wireDropzone();
