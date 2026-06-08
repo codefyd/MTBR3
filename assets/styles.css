@@ -1,7 +1,7 @@
 /* الخط الأساسي المرفق */
 @font-face {
-  font-family: 'Foda';
-  src: url('fonts/foda.ttf') format('truetype');
+  font-family: 'TheYearOfHandicrafts';
+  src: url('fonts/the-year-of-handicrafts.otf') format('opentype');
   font-weight: 400 900;
   font-style: normal;
   font-display: swap;
@@ -44,10 +44,10 @@
 * { box-sizing: border-box; }
 html, body {
   padding: 0; margin: 0;
-  font-family: 'Foda', 'Amiri', 'Times New Roman', serif;
+  font-family: 'TheYearOfHandicrafts', 'Times New Roman', serif;
   background: var(--c-bg); color: var(--c-ink);
   font-size: 17px; -webkit-font-smoothing: antialiased;
-  /* فرض الأرقام الإنجليزية (اللاتينية) في كامل الواجهة */
+  /* الأرقام الإنجليزية 123 في كامل الواجهة */
   font-variant-numeric: lining-nums;
   font-feature-settings: "lnum" 1;
 }
