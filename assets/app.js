@@ -125,30 +125,77 @@ function esc(s) {
 // السعودي => 966XXXXXXXXX | الأجنبي => كما هو | المبتور => null
 const SA_OPERATORS = ['50','51','52','53','54','55','56','57','58','59'];
 function normalizePhone(raw) {
-  if (raw === null || raw === undefined) return { phone: null, reason: 'فارغ' };
+  if (raw === null || raw === undefined) {
+    return { phone: null, reason: 'فارغ' };
+  }
+
   let d = String(raw).replace(/[^0-9]/g, '');
-  if (!d) return { phone: null, reason: 'لا يحتوي أرقام' };
+
+  if (!d) {
+    return { phone: null, reason: 'لا يحتوي أرقام' };
+  }
+
   d = d.replace(/^00/, '');
 
+  const validOp = op => SA_OPERATORS.includes(op);
+
   if (/^9665\d{8}$/.test(d)) {
-    return SA_OPERATORS.includes(d.slice(3, 5))
+    const op = d.slice(3, 5);
+
+    return validOp(op)
       ? { phone: d, reason: 'سعودي صحيح' }
       : { phone: null, reason: 'مشغّل سعودي غير صحيح' };
   }
+
   if (/^05\d{8}$/.test(d)) {
-    return SA_OPERATORS.includes(d.slice(1, 3))
+    const op = d.slice(1, 3);
+
+    return validOp(op)
       ? { phone: '966' + d.slice(1), reason: 'محلي بصفر' }
       : { phone: null, reason: 'مشغّل سعودي غير صحيح' };
   }
+
   if (/^5\d{8}$/.test(d)) {
-    return SA_OPERATORS.includes(d.slice(0, 2))
+    const op = d.slice(0, 2);
+
+    return validOp(op)
       ? { phone: '966' + d, reason: 'محلي 9 خانات' }
-      : { phone: null, reason: 'مشغّل سعودي غير صحيح (' + d.slice(0, 2) + ')' };
+      : { phone: null, reason: 'مشغّل سعودي غير صحيح (' + op + ')' };
   }
-  if (d.startsWith('966')) return { phone: null, reason: 'يبدأ بـ966 لكن غير صالح' };
-  if (d.length >= 8 && d.length <= 15) return { phone: d, reason: 'أجنبي' };
+
+  // تصحيح آمن للأرقام الطويلة التي تبدأ بـ966 وفي آخرها رقم سعودي صحيح
+  if (d.startsWith('966') && d.length > 12) {
+    const tail12 = d.slice(-12);
+    const tail10 = d.slice(-10);
+
+    if (/^9665\d{8}$/.test(tail12)) {
+      const op = tail12.slice(3, 5);
+
+      if (validOp(op)) {
+        return { phone: tail12, reason: 'تصحيح رقم سعودي مكرر' };
+      }
+    }
+
+    if (/^05\d{8}$/.test(tail10)) {
+      const op = tail10.slice(1, 3);
+
+      if (validOp(op)) {
+        return { phone: '966' + tail10.slice(1), reason: 'تصحيح من آخر رقم محلي صحيح' };
+      }
+    }
+  }
+
+  if (d.startsWith('966')) {
+    return { phone: null, reason: 'يبدأ بـ966 لكن غير صالح' };
+  }
+
+  if (d.length >= 8 && d.length <= 15) {
+    return { phone: d, reason: 'أجنبي' };
+  }
+
   return { phone: null, reason: 'مبتور/غير صالح (' + d.length + ' خانة)' };
 }
+
 // واجهة مختصرة ترجع الرقم فقط (للتوافق مع الاستدعاءات السابقة)
 function cleanPhone(raw) {
   return normalizePhone(raw).phone;
