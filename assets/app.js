@@ -25,8 +25,8 @@ async function guard(page) {
 // ------- الشريط الجانبي -------
 const NAV = [
   { href: 'dashboard.html', label: 'لوحة التحكم', icon: 'fa-chart-line' },
-  { href: 'operations.html', label: 'العمليات', icon: 'fa-receipt' },
   { href: 'donors.html', label: 'ملفات المتبرعين', icon: 'fa-users' },
+  { href: 'operations.html', label: 'العمليات', icon: 'fa-receipt' },
   { href: 'campaigns.html', label: 'المستهدفين في الحملات', icon: 'fa-bullhorn' },
   { href: 'settings.html', label: 'الإعدادات', icon: 'fa-gear' },
 ];
@@ -124,43 +124,49 @@ function esc(s) {
 // تنظيف وتطبيع رقم الجوال (نفس منطق دالة SQL)
 // السعودي => 966XXXXXXXXX | الأجنبي => كما هو | المبتور => null
 const SA_OPERATORS = ['50','51','52','53','54','55','56','57','58','59'];
-function normalizePhone(raw) {
-  if (raw === null || raw === undefined) {
-    return { phone: null, reason: 'فارغ' };
+function phoneDigits(raw) {
+  if (raw === null || raw === undefined) return '';
+  return String(raw).replace(/[^0-9]/g, '').replace(/^00/, '');
+}
+function invalidPhoneKey(d, lineNo, operationNo) {
+  // مفتاح محلي للعرض فقط؛ قاعدة البيانات تولّد مفتاحًا ثابتًا مشابهًا.
+  // لا يظهر هذا المفتاح للمستخدم النهائي، بل نعرض الرقم كما ورد.
+  if (!d) return `EMPTY:${operationNo || lineNo || Date.now()}`;
+  return `INVALID:${d}`;
+}
+function normalizePhone(raw, ctx = {}) {
+  const rawText = raw === null || raw === undefined ? '' : String(raw).trim();
+  const d0 = phoneDigits(raw);
+
+  if (!rawText) {
+    return { phone: invalidPhoneKey('', ctx.lineNo, ctx.operationNo), status: 'فارغ', reason: 'رقم الجوال فارغ', digits: '' };
+  }
+  if (!d0) {
+    return { phone: invalidPhoneKey('', ctx.lineNo, ctx.operationNo), status: 'فارغ', reason: 'لا يحتوي أرقام', digits: '' };
   }
 
-  let d = String(raw).replace(/[^0-9]/g, '');
-
-  if (!d) {
-    return { phone: null, reason: 'لا يحتوي أرقام' };
-  }
-
-  d = d.replace(/^00/, '');
-
+  const d = d0;
   const validOp = op => SA_OPERATORS.includes(op);
 
   if (/^9665\d{8}$/.test(d)) {
     const op = d.slice(3, 5);
-
     return validOp(op)
-      ? { phone: d, reason: 'سعودي صحيح' }
-      : { phone: null, reason: 'مشغّل سعودي غير صحيح' };
+      ? { phone: d, status: 'صحيح', reason: 'سعودي صحيح', digits: d }
+      : { phone: invalidPhoneKey(d, ctx.lineNo, ctx.operationNo), status: 'خاطئ', reason: 'مشغّل سعودي غير صحيح', digits: d };
   }
 
   if (/^05\d{8}$/.test(d)) {
     const op = d.slice(1, 3);
-
     return validOp(op)
-      ? { phone: '966' + d.slice(1), reason: 'محلي بصفر' }
-      : { phone: null, reason: 'مشغّل سعودي غير صحيح' };
+      ? { phone: '966' + d.slice(1), status: 'صحيح', reason: 'محلي بصفر', digits: d }
+      : { phone: invalidPhoneKey(d, ctx.lineNo, ctx.operationNo), status: 'خاطئ', reason: 'مشغّل سعودي غير صحيح', digits: d };
   }
 
   if (/^5\d{8}$/.test(d)) {
     const op = d.slice(0, 2);
-
     return validOp(op)
-      ? { phone: '966' + d, reason: 'محلي 9 خانات' }
-      : { phone: null, reason: 'مشغّل سعودي غير صحيح (' + op + ')' };
+      ? { phone: '966' + d, status: 'صحيح', reason: 'محلي 9 خانات', digits: d }
+      : { phone: invalidPhoneKey(d, ctx.lineNo, ctx.operationNo), status: 'خاطئ', reason: 'مشغّل سعودي غير صحيح (' + op + ')', digits: d };
   }
 
   // تصحيح آمن للأرقام الطويلة التي تبدأ بـ966 وفي آخرها رقم سعودي صحيح
@@ -170,35 +176,33 @@ function normalizePhone(raw) {
 
     if (/^9665\d{8}$/.test(tail12)) {
       const op = tail12.slice(3, 5);
-
-      if (validOp(op)) {
-        return { phone: tail12, reason: 'تصحيح رقم سعودي مكرر' };
-      }
+      if (validOp(op)) return { phone: tail12, status: 'صحيح', reason: 'تصحيح رقم سعودي مكرر', digits: d };
     }
 
     if (/^05\d{8}$/.test(tail10)) {
       const op = tail10.slice(1, 3);
-
-      if (validOp(op)) {
-        return { phone: '966' + tail10.slice(1), reason: 'تصحيح من آخر رقم محلي صحيح' };
-      }
+      if (validOp(op)) return { phone: '966' + tail10.slice(1), status: 'صحيح', reason: 'تصحيح من آخر رقم محلي صحيح', digits: d };
     }
   }
 
   if (d.startsWith('966')) {
-    return { phone: null, reason: 'يبدأ بـ966 لكن غير صالح' };
+    return { phone: invalidPhoneKey(d, ctx.lineNo, ctx.operationNo), status: 'خاطئ', reason: 'يبدأ بـ966 لكن غير صالح', digits: d };
   }
 
   if (d.length >= 8 && d.length <= 15) {
-    return { phone: d, reason: 'أجنبي' };
+    return { phone: d, status: 'صحيح', reason: 'أجنبي', digits: d };
   }
 
-  return { phone: null, reason: 'مبتور/غير صالح (' + d.length + ' خانة)' };
+  return { phone: invalidPhoneKey(d, ctx.lineNo, ctx.operationNo), status: 'خاطئ', reason: 'مبتور/غير صالح (' + d.length + ' خانة)', digits: d };
 }
 
 // واجهة مختصرة ترجع الرقم فقط (للتوافق مع الاستدعاءات السابقة)
 function cleanPhone(raw) {
-  return normalizePhone(raw).phone;
+  const n = normalizePhone(raw);
+  return n.status === 'صحيح' ? n.phone : null;
+}
+function operationPhoneKey(raw, ctx = {}) {
+  return normalizePhone(raw, ctx).phone;
 }
 function toNum(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -247,5 +251,5 @@ async function rpcInBatches(fnName, rows, batchSize = 500) {
 
 window.App = {
   sb, guard, initShell, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc,
-  cleanPhone, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, PAGE_SIZE,
+  cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, PAGE_SIZE,
 };

@@ -31,7 +31,7 @@
     // حالة الترتيب حسب رأس العمود
     let sortCol = 'total_amount', sortAsc = false;
     const SORTABLE = {
-      donor_name:1, phone:1, first_donation:1, last_donation:1,
+      donor_name:1, phone:1, phone_status:1, first_donation:1, last_donation:1,
       total_amount:1, donations_count:1, status:1, category:1,
       sat_count:1, sun_count:1, mon_count:1, tue_count:1, wed_count:1, thu_count:1, fri_count:1,
       period_morning:1, period_noon:1, period_evening:1, period_night:1,
@@ -68,13 +68,20 @@
       if (!session) return;
       const { data: s } = await App.sb.from('settings').select('categories').eq('id', 1).single();
       categories = (s?.categories || []).map(c => c.name);
-      projectsList = await fetchProjects();
+      // نعرض الصفحة وجدول المتبرعين أولًا، ثم نحمل قائمة المشاريع لاحقًا لأنها تُفحص من جدول العمليات وقد تكون أثقل.
       renderPage();
-      load(); loadKpis();
+      load();
+      loadKpis();
+      fetchProjects().then(list => { projectsList = list; renderProjectsOptions(); }).catch(() => {});
     })();
 
     // جلب قائمة المشاريع الفريدة من العمليات (لقائمة الفلتر)
     async function fetchProjects() {
+      // أسرع مسار: دالة قاعدة بيانات ترجع المشاريع الفريدة مباشرة.
+      const rpc = await App.sb.rpc('operations_projects');
+      if (!rpc.error && Array.isArray(rpc.data)) return rpc.data;
+
+      // مسار احتياطي إذا لم تُشغّل تحديثات SQL بعد.
       const set = new Set();
       const CHUNK = 1000;
       let from = 0, done = false, guard = 0;
@@ -100,10 +107,11 @@
         </div>
         <div class="content">
           <div class="row g-3 fade-in" style="margin-bottom:1.5rem">
-            <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-icon"><i class="fa-solid fa-user-group"></i></div><div class="kpi-label">إجمالي المتبرعين</div><div class="kpi-value" id="kpiTotal">—</div></div></div>
-            <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-icon" style="background:#dff3eb;color:var(--c-success)"><i class="fa-solid fa-heart-pulse"></i></div><div class="kpi-label">مستمرون</div><div class="kpi-value" id="kpiActive">—</div></div></div>
-            <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-icon" style="background:#f6e3e0;color:var(--c-danger)"><i class="fa-solid fa-moon"></i></div><div class="kpi-label">خاملون</div><div class="kpi-value" id="kpiInactive">—</div></div></div>
-            <div class="col-6 col-lg-3"><div class="kpi-card gold"><div class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div><div class="kpi-label">إجمالي التبرعات</div><div class="kpi-value" id="kpiSum">—</div></div></div>
+            <div class="col-6 col-xl"><div class="kpi-card"><div class="kpi-icon"><i class="fa-solid fa-user-group"></i></div><div class="kpi-label">إجمالي المتبرعين</div><div class="kpi-value" id="kpiTotal">—</div></div></div>
+            <div class="col-6 col-xl"><div class="kpi-card"><div class="kpi-icon" style="background:#dff3eb;color:var(--c-success)"><i class="fa-solid fa-phone-circle-check"></i></div><div class="kpi-label">أرقام صحيحة</div><div class="kpi-value" id="kpiValidPhones">—</div></div></div>
+            <div class="col-6 col-xl"><div class="kpi-card"><div class="kpi-icon" style="background:#dff3eb;color:var(--c-success)"><i class="fa-solid fa-heart-pulse"></i></div><div class="kpi-label">مستمرون</div><div class="kpi-value" id="kpiActive">—</div></div></div>
+            <div class="col-6 col-xl"><div class="kpi-card"><div class="kpi-icon" style="background:#f6e3e0;color:var(--c-danger)"><i class="fa-solid fa-moon"></i></div><div class="kpi-label">خاملون</div><div class="kpi-value" id="kpiInactive">—</div></div></div>
+            <div class="col-6 col-xl"><div class="kpi-card gold"><div class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div><div class="kpi-label">إجمالي التبرعات</div><div class="kpi-value" id="kpiSum">—</div></div></div>
           </div>
 
           <!-- شريط الحصالة -->
@@ -159,7 +167,7 @@
                       <div id="ddProjOpts">
                         ${projectsList.length
                           ? projectsList.map(p => `<label class="multi-dd-opt"><input type="checkbox" value="${App.esc(p)}" />${App.esc(p)}</label>`).join('')
-                          : '<div class="muted" style="padding:.5rem">لا توجد مشاريع بعد. ارفع عمليات أولاً.</div>'}
+                          : '<div class="muted" style="padding:.5rem">جارٍ تحميل المشاريع بعد عرض الملفات…</div>'}
                       </div>
                     </div>
                   </div>
@@ -287,6 +295,21 @@
       lbl.classList.toggle('ph', f.projects.length === 0);
     }
 
+    function renderProjectsOptions() {
+      const opts = document.getElementById('ddProjOpts');
+      if (!opts) return;
+      opts.innerHTML = projectsList.length
+        ? projectsList.map(p => `<label class="multi-dd-opt"><input type="checkbox" value="${App.esc(p)}" ${f.projects.includes(p) ? 'checked' : ''} />${App.esc(p)}</label>`).join('')
+        : '<div class="muted" style="padding:.5rem">لا توجد مشاريع بعد. ارفع عمليات أولاً.</div>';
+      opts.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          f.projects = [...opts.querySelectorAll('input[type=checkbox]:checked')].map(x => x.value);
+          updateProjLabel();
+          page = 0; load();
+        });
+      });
+    }
+
     function wireChipGroup(groupId, key) {
       const grp = document.getElementById(groupId);
       if (!grp) return;
@@ -327,7 +350,7 @@
 
     // يطبّق الفلاتر على استعلام معطى (يُستخدم للجدول وللحصالة)
     function buildQuery(q) {
-      if (f.search) q = q.or(`phone.ilike.%${f.search}%,donor_name.ilike.%${f.search}%`);
+      if (f.search) q = q.or(`phone.ilike.%${f.search}%,phone_raw.ilike.%${f.search}%,phone_status.ilike.%${f.search}%,donor_name.ilike.%${f.search}%`);
       if (f.statuses.length) q = q.in('status', f.statuses);
       if (f.cats.length) q = q.in('category', f.cats);
       // المشاريع: تطابق "أيٍّ منها" => overlaps على مصفوفة projects
@@ -349,21 +372,25 @@
     }
 
     async function loadKpis() {
-      const total = await App.sb.from('donors').select('*', { count:'exact', head:true });
-      const active = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','مستمر');
-      const inactive = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','خامل');
-      const { data: sum } = await App.sb.rpc('donors_total_sum');
-      document.getElementById('kpiTotal').textContent = (total.count || 0).toLocaleString('en-US');
-      document.getElementById('kpiActive').textContent = (active.count || 0).toLocaleString('en-US');
-      document.getElementById('kpiInactive').textContent = (inactive.count || 0).toLocaleString('en-US');
-      document.getElementById('kpiSum').textContent = App.fmtMoney(sum || 0);
+      const [total, valid, active, inactive, sumRes] = await Promise.all([
+        App.sb.from('donors').select('*', { count:'exact', head:true }),
+        App.sb.from('donors').select('*', { count:'exact', head:true }).eq('phone_status','صحيح'),
+        App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','مستمر'),
+        App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','خامل'),
+        App.sb.rpc('donors_total_sum'),
+      ]);
+      document.getElementById('kpiTotal').textContent = App.fmtNum(total.count || 0);
+      document.getElementById('kpiValidPhones').textContent = App.fmtNum(valid.count || 0);
+      document.getElementById('kpiActive').textContent = App.fmtNum(active.count || 0);
+      document.getElementById('kpiInactive').textContent = App.fmtNum(inactive.count || 0);
+      document.getElementById('kpiSum').textContent = App.fmtMoney(sumRes.data || 0);
     }
 
     async function load() {
       const area = document.getElementById('tableArea');
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
 
-      let q = App.sb.from('donors').select('*', { count:'exact' })
+      let q = App.sb.from('donors').select('phone,phone_raw,phone_status,phone_issue,donor_name,first_donation,last_donation,total_amount,donations_count,projects,status,category,sat_count,sun_count,mon_count,tue_count,wed_count,thu_count,fri_count,period_morning,period_noon,period_evening,period_night,no_time_count,targeted_count,last_targeted', { count:'exact' })
         .order(sortCol, { ascending: sortAsc, nullsFirst: false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       q = buildQuery(q);
@@ -396,9 +423,13 @@
         const dayTd = DAY_COLS.map(d => `<td class="col-day">${App.fmtNum(r[d.key] || 0)}</td>`).join('');
         const periodTd = PERIOD_COLS.map(d => `<td class="col-period">${App.fmtNum(r[d.key] || 0)}</td>`).join('');
         const statusBadge = r.status === 'مستمر' ? 'badge-active' : 'badge-inactive';
+        const phoneStatus = r.phone_status || 'صحيح';
+        const phoneBadge = phoneStatus === 'صحيح' ? 'badge-active' : phoneStatus === 'فارغ' ? 'badge-cat' : 'badge-inactive';
+        const shownPhone = phoneStatus === 'صحيح' ? r.phone : (r.phone_raw || '—');
         return `<tr>
           <td>${App.esc(r.donor_name) || '—'}</td>
-          <td dir="ltr">${App.esc(r.phone)}</td>
+          <td dir="ltr">${App.esc(shownPhone)}</td>
+          <td><span class="badge-x ${phoneBadge}">${App.esc(phoneStatus)}</span>${r.phone_issue ? `<div class="muted" style="font-size:.72rem;margin-top:.2rem">${App.esc(r.phone_issue)}</div>` : ''}</td>
           <td>${App.fmtDate(r.first_donation)}</td>
           <td>${App.fmtDate(r.last_donation)}</td>
           <td style="font-weight:700">${App.fmtMoney(r.total_amount)}</td>
@@ -416,7 +447,7 @@
       area.innerHTML = `
         <div class="table-wrap"><table class="data donors-table">
           <thead><tr>
-            ${sortableTh('donor_name','الاسم')}${sortableTh('phone','الجوال')}
+            ${sortableTh('donor_name','الاسم')}${sortableTh('phone','الجوال')}${sortableTh('phone_status','حالة الرقم')}
             ${sortableTh('first_donation','أول تبرع')}${sortableTh('last_donation','آخر تبرع')}
             ${sortableTh('total_amount','الإجمالي')}${sortableTh('donations_count','العدد')}
             <th>المشاريع</th>
@@ -626,7 +657,9 @@
       const data = rows.map(r => {
         const o = {
           'الاسم': r.donor_name || '',
-          'رقم الجوال': r.phone || '',
+          'رقم الجوال': (r.phone_status === 'صحيح' ? r.phone : (r.phone_raw || '')) || '',
+          'حالة الرقم': r.phone_status || 'صحيح',
+          'ملاحظة الرقم': r.phone_issue || '',
           'أول تبرع': App.fmtDate(r.first_donation),
           'آخر تبرع': App.fmtDate(r.last_donation),
           'إجمالي التبرعات': r.total_amount || 0,

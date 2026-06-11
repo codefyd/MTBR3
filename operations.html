@@ -33,7 +33,7 @@
             <div class="panel-body">
               <div class="dropzone" id="dz">
                 <i class="fa-solid fa-file-arrow-up"></i>
-                <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CVS)</div>
+                <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CSV)</div>
                 <div class="muted" style="font-size:.92rem;margin-top:.35rem">
                   الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت
                 </div>
@@ -44,7 +44,7 @@
           <div class="panel fade-in">
             <div class="panel-head">
               <h2>سجل العمليات <span class="muted" id="cnt" style="font-size:.9rem;font-weight:400"></span></h2>
-              <input class="field" id="search" placeholder="بحث بالجوال أو الاسم أو رقم العملية" style="max-width:300px" />
+              <input class="field" id="search" placeholder="بحث بالجوال أو الاسم أو رقم العملية أو حالة الرقم" style="max-width:300px" />
             </div>
             <div class="panel-body"><div id="tableArea"></div></div>
           </div>
@@ -77,20 +77,24 @@
 
         const records = [];
         let skipped = 0;
-        const rejected = []; // الأرقام التي فشل تطبيعها
+        const phoneReport = { valid: 0, invalid: 0, empty: 0, rows: [] };
         for (const row of rows) {
           const lineNo = App.toNum(App.pick(row, ['رقم']));
           const opNo = App.toNum(App.pick(row, ['#العملية', 'العملية']));
           if (lineNo === null || opNo === null) { skipped++; continue; }
           const phoneRaw = App.pick(row, ['الجوال']);
-          // تطبيع الجوال محليًا لرصد المرفوض (قاعدة البيانات تطبّق نفس المنطق)
-          const norm = App.normalizePhone(phoneRaw);
-          if (phoneRaw != null && String(phoneRaw).trim() !== '' && norm.phone === null) {
-            rejected.push({
+          // تقرير محلي فقط؛ قاعدة البيانات تحفظ نفس التصنيف داخل العمليات.
+          const norm = App.normalizePhone(phoneRaw, { lineNo, operationNo: opNo });
+          if (norm.status === 'صحيح') phoneReport.valid++;
+          else if (norm.status === 'فارغ') phoneReport.empty++;
+          else phoneReport.invalid++;
+          if (norm.status !== 'صحيح') {
+            phoneReport.rows.push({
               'رقم': lineNo, '#العملية': opNo,
               'الاسم': App.pick(row, ['الاسم']) || '',
-              'الجوال كما ورد': String(phoneRaw),
-              'سبب الرفض': norm.reason,
+              'الجوال كما ورد': phoneRaw == null ? '' : String(phoneRaw),
+              'الحالة': norm.status,
+              'الملاحظة': norm.reason,
             });
           }
           records.push({
@@ -112,7 +116,7 @@
         if (rpcErr) throw rpcErr;
 
         App.toast(`تمت المعالجة: ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''} وإعادة حساب الملفات.`, 'ok');
-        if (rejected.length) showRejectedReport(rejected);
+        showPhoneReport({ ...phoneReport, skipped, total: records.length });
         page = 0; load();
       } catch (e) {
         App.toast(e.message || 'فشل الرفع', 'err');
@@ -124,7 +128,7 @@
     function resetDropzone() {
       const dz = document.getElementById('dz');
       dz.innerHTML = `<i class="fa-solid fa-file-arrow-up"></i>
-        <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CVS)</div>
+        <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CSV)</div>
         <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت</div>
         <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />`;
       wireDropzone();
@@ -134,12 +138,12 @@
       const area = document.getElementById('tableArea');
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
 
-      let q = App.sb.from('operations').select('*', { count: 'exact' })
+      let q = App.sb.from('operations').select('line_no,operation_no,donor_name,phone_raw,phone,phone_status,phone_issue,project,referral_code,value,quantity,total,op_datetime', { count: 'exact' })
         .order('op_datetime', { ascending: false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       if (search) {
         const numPart = /^\d+$/.test(search) ? search : '0';
-        q = q.or(`phone.ilike.%${search}%,donor_name.ilike.%${search}%,operation_no.eq.${numPart}`);
+        q = q.or(`phone.ilike.%${search}%,phone_raw.ilike.%${search}%,phone_status.ilike.%${search}%,donor_name.ilike.%${search}%,operation_no.eq.${numPart}`);
       }
       const { data, count: c, error } = await q;
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
@@ -151,23 +155,30 @@
         return;
       }
 
-      const rowsHtml = data.map(r => `
+      const rowsHtml = data.map(r => {
+        const status = r.phone_status || 'صحيح';
+        const isValid = status === 'صحيح';
+        const shownPhone = isValid ? r.phone : (r.phone_raw || '—');
+        const badge = status === 'صحيح' ? 'badge-active' : status === 'فارغ' ? 'badge-cat' : 'badge-inactive';
+        return `
         <tr>
           <td>${r.line_no}</td><td>${r.operation_no}</td>
           <td>${App.esc(r.donor_name) || '—'}</td>
-          <td dir="ltr" style="text-align:right">${App.esc(r.phone) || '—'}</td>
+          <td dir="ltr" style="text-align:right">${App.esc(shownPhone) || '—'}</td>
+          <td><span class="badge-x ${badge}">${App.esc(status)}</span>${r.phone_issue ? `<div class="muted" style="font-size:.75rem;margin-top:.2rem">${App.esc(r.phone_issue)}</div>` : ''}</td>
           <td>${App.esc(r.project) || '—'}</td>
           <td>${App.esc(r.referral_code) || '—'}</td>
           <td>${r.value != null ? App.fmtMoney(r.value) : '—'}</td>
           <td>${r.quantity ?? '—'}</td>
           <td style="font-weight:700">${r.total != null ? App.fmtMoney(r.total) : '—'}</td>
           <td>${App.fmtDateTime(r.op_datetime)}</td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
 
       const pages = Math.ceil(count / App.PAGE_SIZE);
       area.innerHTML = `
         <div class="table-wrap"><table class="data">
-          <thead><tr><th>رقم</th><th>#العملية</th><th>الاسم</th><th>الجوال</th><th>المشروع</th><th>كود الإحالة</th><th>القيمة</th><th>الكمية</th><th>المجموع</th><th>التاريخ والوقت</th></tr></thead>
+          <thead><tr><th>رقم</th><th>#العملية</th><th>الاسم</th><th>الجوال</th><th>حالة الرقم</th><th>المشروع</th><th>كود الإحالة</th><th>القيمة</th><th>الكمية</th><th>المجموع</th><th>التاريخ والوقت</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table></div>
         ${pagerHtml(pages)}`;
@@ -187,42 +198,50 @@
       document.getElementById('next')?.addEventListener('click', () => { if (page + 1 < pages) { page++; load(); } });
     }
 
-    // تقرير الأرقام المرفوضة بعد الرفع (نافذة + تصدير Excel)
-    function showRejectedReport(rejected) {
+    // تقرير أرقام الجوال بعد الرفع (نافذة + تصدير Excel)
+    function showPhoneReport(report) {
+      const reviewRows = report.rows || [];
       const back = document.createElement('div');
       back.className = 'modal-back';
-      const preview = rejected.slice(0, 100).map(r => `
+      const preview = reviewRows.slice(0, 100).map(r => `
         <tr>
           <td>${r['رقم']}</td><td>${r['#العملية']}</td>
           <td>${App.esc(r['الاسم'])}</td>
           <td dir="ltr" style="text-align:right">${App.esc(r['الجوال كما ورد'])}</td>
-          <td>${App.esc(r['سبب الرفض'])}</td>
+          <td>${App.esc(r['الحالة'])}</td>
+          <td>${App.esc(r['الملاحظة'])}</td>
         </tr>`).join('');
       back.innerHTML = `
         <div class="modal-box">
           <div class="panel-head">
-            <h2 style="color:var(--c-danger)"><i class="fa-solid fa-triangle-exclamation"></i> أرقام لم تُعالَج (${rejected.length.toLocaleString('en-US')})</h2>
-            <button class="btn-x btn-ghost btn-sm" id="rjClose"><i class="fa-solid fa-xmark"></i></button>
+            <h2><i class="fa-solid fa-clipboard-check text-gold"></i> تقرير أرقام الجوال بعد الرفع</h2>
+            <button class="btn-x btn-ghost btn-sm" id="phClose"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="panel-body" style="overflow:auto">
-            <p class="muted" style="margin-top:0">تم حفظ العمليات، لكن هذه الأرقام لم تُربط بمتبرع لأنها غير صالحة. راجعها وصحّحها في الملف ثم أعد الرفع.${rejected.length > 100 ? ' (عرض أول 100 فقط — التصدير يشمل الكل)' : ''}</p>
-            <div class="table-wrap"><table class="data">
-              <thead><tr><th>رقم</th><th>#العملية</th><th>الاسم</th><th>الجوال كما ورد</th><th>سبب الرفض</th></tr></thead>
+            <div class="row g-3" style="margin-bottom:1rem">
+              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">صفوف مقبولة</div><div class="kpi-value">${App.fmtNum(report.total || 0)}</div></div></div>
+              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">أرقام صحيحة</div><div class="kpi-value">${App.fmtNum(report.valid || 0)}</div></div></div>
+              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">أرقام خاطئة</div><div class="kpi-value">${App.fmtNum(report.invalid || 0)}</div></div></div>
+              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">أرقام فارغة</div><div class="kpi-value">${App.fmtNum(report.empty || 0)}</div></div></div>
+            </div>
+            <p class="muted" style="margin-top:0">تم قبول جميع الصفوف الصالحة من ناحية رقم العملية. الأرقام الخاطئة والفارغة تدخل الآن في العمليات وملفات المتبرعين كمراجعة، ولا تُحذف من التحليلات.${report.skipped ? ` تم تخطي ${App.fmtNum(report.skipped)} صف بلا رقم/عملية.` : ''}${reviewRows.length > 100 ? ' (عرض أول 100 فقط — التصدير يشمل الكل)' : ''}</p>
+            ${reviewRows.length ? `<div class="table-wrap"><table class="data">
+              <thead><tr><th>رقم</th><th>#العملية</th><th>الاسم</th><th>الجوال كما ورد</th><th>الحالة</th><th>الملاحظة</th></tr></thead>
               <tbody>${preview}</tbody>
-            </table></div>
+            </table></div>` : '<div class="empty-state"><i class="fa-solid fa-circle-check"></i>كل الأرقام في الملف صحيحة.</div>'}
           </div>
           <div class="panel-head" style="border-top:1px solid var(--c-line);border-bottom:none;justify-content:flex-end">
-            <button class="btn-x btn-gold" id="rjExport"><i class="fa-solid fa-file-excel"></i> تصدير قائمة المرفوضة</button>
+            <button class="btn-x btn-gold" id="phExport" ${reviewRows.length ? '' : 'disabled'}><i class="fa-solid fa-file-excel"></i> تصدير أرقام المراجعة</button>
           </div>
         </div>`;
       document.body.appendChild(back);
       back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
-      document.getElementById('rjClose').addEventListener('click', () => back.remove());
-      document.getElementById('rjExport').addEventListener('click', () => {
-        const ws = window.XLSX.utils.json_to_sheet(rejected);
+      document.getElementById('phClose').addEventListener('click', () => back.remove());
+      document.getElementById('phExport')?.addEventListener('click', () => {
+        const ws = window.XLSX.utils.json_to_sheet(reviewRows);
         const wb = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(wb, ws, 'أرقام مرفوضة');
-        window.XLSX.writeFile(wb, `أرقام-مرفوضة-${new Date().toISOString().slice(0,10)}.xlsx`);
+        window.XLSX.utils.book_append_sheet(wb, ws, 'أرقام للمراجعة');
+        window.XLSX.writeFile(wb, `تقرير-أرقام-الجوال-${new Date().toISOString().slice(0,10)}.xlsx`);
       });
     }
   </script>
