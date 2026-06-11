@@ -237,6 +237,34 @@ async function readExcel(file) {
   return window.XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
 }
 
+
+// إعادة بناء ملفات المتبرعين على دفعات لتجنب timeout في Supabase/PostgREST
+async function rebuildDonorsInBatches(onProgress, batchSize = 300) {
+  const start = await sb.rpc('donor_rebuild_start');
+  if (start.error) throw start.error;
+  const total = Number(start.data || 0);
+  let remaining = total;
+  let processed = 0;
+  if (typeof onProgress === 'function') onProgress({ total, processed, remaining });
+
+  // حماية من حلقة لا نهائية لو رجعت الدالة نتيجة غير متوقعة
+  let safety = 0;
+  while (remaining > 0 && safety < 10000) {
+    safety++;
+    const { data, error } = await sb.rpc('donor_rebuild_chunk', { p_limit: batchSize });
+    if (error) throw error;
+    const stepProcessed = Number(data?.processed || 0);
+    remaining = Number(data?.remaining || 0);
+    processed += stepProcessed;
+    if (typeof onProgress === 'function') onProgress({ total, processed, remaining });
+    if (stepProcessed === 0 && remaining > 0) {
+      throw new Error('توقف احتساب ملفات المتبرعين قبل اكتمال الدفعات.');
+    }
+  }
+  if (remaining > 0) throw new Error('لم يكتمل احتساب ملفات المتبرعين بسبب تجاوز حد الأمان.');
+  return { total, processed, remaining };
+}
+
 // رفع البيانات على دفعات عبر دالة RPC في قاعدة البيانات
 async function rpcInBatches(fnName, rows, batchSize = 500) {
   let total = 0;
@@ -251,5 +279,5 @@ async function rpcInBatches(fnName, rows, batchSize = 500) {
 
 window.App = {
   sb, guard, initShell, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc,
-  cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, PAGE_SIZE,
+  cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, rebuildDonorsInBatches, PAGE_SIZE,
 };

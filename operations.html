@@ -112,12 +112,26 @@
         if (!records.length) throw new Error('لم يتم العثور على صفوف صالحة. تأكد من أسماء الأعمدة.');
 
         const upserted = await App.rpcInBatches('upsert_operations', records);
-        const { error: rpcErr } = await App.sb.rpc('recalculate_donors');
-        if (rpcErr) throw rpcErr;
 
-        App.toast(`تمت المعالجة: ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''} وإعادة حساب الملفات.`, 'ok');
+        // نُظهر نتيجة الرفع والتقرير مباشرة؛ لأن العمليات وصلت فعلًا.
+        // بعدها نعيد بناء ملفات المتبرعين على دفعات حتى لا يصير timeout.
+        App.toast(`تم رفع ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. جارٍ تحديث ملفات المتبرعين...`, 'ok');
         showPhoneReport({ ...phoneReport, skipped, total: records.length });
-        page = 0; load();
+        page = 0;
+        load();
+
+        try {
+          await App.rebuildDonorsInBatches(({ total, processed, remaining }) => {
+            const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
+            dz.innerHTML = `
+              <div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div>
+              <div style="font-weight:700">جارٍ تحديث ملفات المتبرعين على دفعات... ${pct}%</div>
+              <div class="muted">تم ${App.fmtNum(processed)} من ${App.fmtNum(total)} — المتبقي ${App.fmtNum(remaining)}</div>`;
+          });
+          App.toast('تم رفع العمليات وتحديث ملفات المتبرعين بنجاح.', 'ok');
+        } catch (recalcErr) {
+          App.toast(`تم رفع العمليات، لكن لم يكتمل تحديث ملفات المتبرعين: ${recalcErr.message || recalcErr}`, 'err');
+        }
       } catch (e) {
         App.toast(e.message || 'فشل الرفع', 'err');
       } finally {

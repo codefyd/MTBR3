@@ -340,12 +340,19 @@
       const btn = document.getElementById('recalcBtn');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-x" style="border-color:rgba(10,70,64,.3);border-top-color:var(--c-primary-dk)"></span> جارٍ الاحتساب...';
-      const { error } = await App.sb.rpc('recalculate_donors');
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-rotate"></i> إعادة احتساب الملفات';
-      if (error) { App.toast(error.message, 'err'); return; }
-      App.toast('تمت إعادة احتساب ملفات المتبرعين.', 'ok');
-      load(); loadKpis();
+      try {
+        await App.rebuildDonorsInBatches(({ total, processed }) => {
+          const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
+          btn.innerHTML = `<span class="spinner-x" style="border-color:rgba(10,70,64,.3);border-top-color:var(--c-primary-dk)"></span> جارٍ الاحتساب... ${pct}%`;
+        });
+        App.toast('تمت إعادة احتساب ملفات المتبرعين.', 'ok');
+        load(); loadKpis();
+      } catch (error) {
+        App.toast(error.message || 'تعذر إعادة الاحتساب', 'err');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-rotate"></i> إعادة احتساب الملفات';
+      }
     }
 
     // يطبّق الفلاتر على استعلام معطى (يُستخدم للجدول وللحصالة)
