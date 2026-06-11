@@ -148,6 +148,21 @@ function normalizePhone(raw, ctx = {}) {
   const d = d0;
   const validOp = op => SA_OPERATORS.includes(op);
 
+  // تصحيح صفر زائد بعد مفتاح السعودية مع تكرار المفتاح
+  // مثال: 9660966544747447 => 966544747447
+  if (/^9660+9665\d{8}$/.test(d)) {
+    const fixed = d.replace(/^9660+/, '');
+    const op = fixed.slice(3, 5);
+    if (validOp(op)) return { phone: fixed, status: 'صحيح', reason: 'تصحيح صفر زائد بعد 966 مع تكرار المفتاح', digits: d };
+  }
+
+  // مثال: 9660501234567 => 966501234567
+  if (/^9660+5\d{8}$/.test(d)) {
+    const local9 = d.replace(/^9660+/, '');
+    const op = local9.slice(0, 2);
+    if (validOp(op)) return { phone: '966' + local9, status: 'صحيح', reason: 'تصحيح صفر زائد بعد 966', digits: d };
+  }
+
   if (/^9665\d{8}$/.test(d)) {
     const op = d.slice(3, 5);
     return validOp(op)
