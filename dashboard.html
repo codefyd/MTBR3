@@ -22,10 +22,8 @@
       const session = await App.initShell('dashboard.html');
       if (!session) return;
       renderShell();
-      // 1) نحمّل أولًا ملخص ملفات المتبرعين (سريع) ونعرضه
+      // نحمّل أولًا ملخص ملفات المتبرعين فقط؛ التقارير الثقيلة تُحمّل عند الطلب.
       await loadDonorsSummary();
-      // 2) بعد انتهائه نحمّل تقارير العمليات (الأثقل) ونعرضها
-      await loadOperationsReports();
     })();
 
     function renderShell() {
@@ -51,22 +49,26 @@
 
     // ===== المرحلة 1 =====
     async function loadDonorsSummary() {
-      const total    = await App.sb.from('donors').select('*', { count:'exact', head:true });
-      const active   = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','مستمر');
-      const inactive = await App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','خامل');
-      const targeted = await App.sb.from('donors').select('*', { count:'exact', head:true }).gt('targeted_count', 0);
-
+      const { data, error } = await App.sb.rpc('donors_fast_summary');
+      if (error) {
+        document.getElementById('donorCards').innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`;
+        return;
+      }
+      const k = data || {};
       document.getElementById('donorCards').innerHTML = `
-        ${statCard('fa-user-group', 'إجمالي المتبرعين', App.fmtNum(total.count||0))}
-        ${statCard('fa-heart-pulse', 'مستمرون', App.fmtNum(active.count||0), '', false)}
-        ${statCard('fa-moon', 'خاملون', App.fmtNum(inactive.count||0), '', false)}
-        ${statCard('fa-bullhorn', 'تم استهدافهم في حملات', App.fmtNum(targeted.count||0), '', true)}`;
+        ${statCard('fa-user-group', 'إجمالي المتبرعين', App.fmtNum(k.total_donors||0))}
+        ${statCard('fa-phone', 'أرقام صحيحة', App.fmtNum(k.valid_phones||0), '', true)}
+        ${statCard('fa-heart-pulse', 'مستمرون', App.fmtNum(k.active_donors||0), '', false)}
+        ${statCard('fa-moon', 'خاملون', App.fmtNum(k.inactive_donors||0), '', false)}`;
 
-      document.getElementById('loadState').textContent = 'جارٍ تحميل تقارير العمليات…';
-      // هيكل تحميل لتقارير العمليات
-      document.getElementById('opsReports').innerHTML =
-        `<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div>
-         <div class="muted" style="margin-top:.6rem">جارٍ احتساب تقارير العمليات…</div></div>`;
+      document.getElementById('loadState').textContent = '';
+      document.getElementById('opsReports').innerHTML = `
+        <div class="chart-card fade-in" style="text-align:center">
+          <h3><i class="fa-solid fa-gauge-high"></i> التقارير التفصيلية</h3>
+          <div class="muted" style="margin-bottom:1rem">تم تأجيل تقارير العمليات الثقيلة حتى لا تضغط على قاعدة البيانات عند فتح النظام.</div>
+          <button class="btn-x btn-gold" id="loadOpsReports"><i class="fa-solid fa-chart-column"></i> تحميل تقارير العمليات</button>
+        </div>`;
+      document.getElementById('loadOpsReports').addEventListener('click', loadOperationsReports);
     }
 
     function statCard(icon, label, value, sub='', gold=false) {
@@ -80,6 +82,11 @@
 
     // ===== المرحلة 2 =====
     async function loadOperationsReports() {
+      const btn = document.getElementById('loadOpsReports');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جارٍ التحميل…'; }
+      document.getElementById('opsReports').innerHTML =
+        `<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div>
+         <div class="muted" style="margin-top:.6rem">جارٍ احتساب تقارير العمليات…</div></div>`;
       const { data, error } = await App.sb.rpc('dashboard_stats');
       const wrap = document.getElementById('opsReports');
       document.getElementById('loadState').textContent = '';

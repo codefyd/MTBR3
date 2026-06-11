@@ -176,7 +176,7 @@
       const area = document.getElementById('tableArea');
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
 
-      let q = App.sb.from('operations').select('line_no,operation_no,donor_name,phone_raw,phone,phone_status,phone_issue,project,referral_code,value,quantity,total,op_datetime', { count: 'exact' })
+      let q = App.sb.from('operations').select('line_no,operation_no,donor_name,phone_raw,phone,phone_status,phone_issue,project,referral_code,value,quantity,total,op_datetime', { count: 'estimated' })
         .order('op_datetime', { ascending: false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       if (search) {
@@ -186,7 +186,7 @@
       const { data, count: c, error } = await q;
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
       count = c || 0;
-      document.getElementById('cnt').textContent = `(${count.toLocaleString('en-US')} صف)`;
+      document.getElementById('cnt').textContent = `(${count.toLocaleString('en-US')} صف تقريبًا)`;
 
       if (!data.length) {
         area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد عمليات بعد. ابدأ برفع ملف Excel.</div>';

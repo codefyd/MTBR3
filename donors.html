@@ -379,32 +379,28 @@
     }
 
     async function loadKpis() {
-      const [total, valid, active, inactive, sumRes] = await Promise.all([
-        App.sb.from('donors').select('*', { count:'exact', head:true }),
-        App.sb.from('donors').select('*', { count:'exact', head:true }).eq('phone_status','صحيح'),
-        App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','مستمر'),
-        App.sb.from('donors').select('*', { count:'exact', head:true }).eq('status','خامل'),
-        App.sb.rpc('donors_total_sum'),
-      ]);
-      document.getElementById('kpiTotal').textContent = App.fmtNum(total.count || 0);
-      document.getElementById('kpiValidPhones').textContent = App.fmtNum(valid.count || 0);
-      document.getElementById('kpiActive').textContent = App.fmtNum(active.count || 0);
-      document.getElementById('kpiInactive').textContent = App.fmtNum(inactive.count || 0);
-      document.getElementById('kpiSum').textContent = App.fmtMoney(sumRes.data || 0);
+      const { data, error } = await App.sb.rpc('donors_fast_summary');
+      if (error) { App.toast(error.message, 'err'); }
+      const k = data || {};
+      document.getElementById('kpiTotal').textContent = App.fmtNum(k.total_donors || 0);
+      document.getElementById('kpiValidPhones').textContent = App.fmtNum(k.valid_phones || 0);
+      document.getElementById('kpiActive').textContent = App.fmtNum(k.active_donors || 0);
+      document.getElementById('kpiInactive').textContent = App.fmtNum(k.inactive_donors || 0);
+      document.getElementById('kpiSum').textContent = App.fmtMoney(k.total_amount || 0);
     }
 
     async function load() {
       const area = document.getElementById('tableArea');
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
 
-      let q = App.sb.from('donors').select('phone,phone_raw,phone_status,phone_issue,donor_name,first_donation,last_donation,total_amount,donations_count,projects,status,category,sat_count,sun_count,mon_count,tue_count,wed_count,thu_count,fri_count,period_morning,period_noon,period_evening,period_night,no_time_count,targeted_count,last_targeted', { count:'exact' })
+      let q = App.sb.from('donors').select('phone,phone_raw,phone_status,phone_issue,donor_name,first_donation,last_donation,total_amount,donations_count,projects,status,category,sat_count,sun_count,mon_count,tue_count,wed_count,thu_count,fri_count,period_morning,period_noon,period_evening,period_night,no_time_count,targeted_count,last_targeted', { count:'estimated' })
         .order(sortCol, { ascending: sortAsc, nullsFirst: false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       q = buildQuery(q);
       const { data, count:c, error } = await q;
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
       count = c || 0;
-      document.getElementById('cnt').textContent = `(${App.fmtNum(count)} نتيجة)`;
+      document.getElementById('cnt').textContent = `(${App.fmtNum(count)} نتيجة تقريبية)`;
 
       if (!data.length) {
         area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد ملفات متبرعين مطابقة.</div>';
