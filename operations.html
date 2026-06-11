@@ -17,6 +17,15 @@
   <script src="assets/app.js"></script>
   <script>
     let page = 0, search = '', count = 0;
+    const AUTO_REBUILD_KEY = 'operations:autoRebuildDonorsAfterUpload';
+
+    function shouldAutoRebuildDonors() {
+      return localStorage.getItem(AUTO_REBUILD_KEY) !== '0';
+    }
+
+    function setAutoRebuildDonors(enabled) {
+      localStorage.setItem(AUTO_REBUILD_KEY, enabled ? '1' : '0');
+    }
 
     (async () => {
       const session = await App.initShell('operations.html');
@@ -31,6 +40,13 @@
         <div class="content">
           <div class="panel fade-in" style="margin-bottom:1.5rem">
             <div class="panel-body">
+              <label style="display:flex;align-items:center;gap:.6rem;margin-bottom:1rem;cursor:pointer;font-weight:700">
+                <input type="checkbox" id="autoRebuildDonors" style="width:18px;height:18px" />
+                <span>إعادة احتساب ملفات المتبرعين بعد الحفظ</span>
+              </label>
+              <div class="muted" style="font-size:.9rem;margin-top:-.65rem;margin-bottom:1rem">
+                عطّل هذا الخيار عند رفع ملفات كبيرة أو رفع بيانات الجمعية كاملة، ثم أعد الاحتساب يدويًا من صفحة ملفات المتبرعين بعد الانتهاء.
+              </div>
               <div class="dropzone" id="dz">
                 <i class="fa-solid fa-file-arrow-up"></i>
                 <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CSV)</div>
@@ -51,6 +67,9 @@
         </div>`;
 
       wireDropzone();
+      const autoRebuild = document.getElementById('autoRebuildDonors');
+      autoRebuild.checked = shouldAutoRebuildDonors();
+      autoRebuild.addEventListener('change', (e) => setAutoRebuildDonors(e.target.checked));
       let t;
       document.getElementById('search').addEventListener('input', (e) => {
         clearTimeout(t);
@@ -70,7 +89,7 @@
 
     async function handleFile(file) {
       const dz = document.getElementById('dz');
-      dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ المعالجة وإعادة الحساب...</div><div class="muted">' + App.esc(file.name) + '</div>';
+      dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ معالجة الملف وحفظ العمليات...</div><div class="muted">' + App.esc(file.name) + '</div>';
       try {
         const rows = await App.readExcel(file);
         if (!rows.length) throw new Error('الملف فارغ أو لا يحتوي بيانات');
@@ -114,12 +133,17 @@
         const upserted = await App.rpcInBatches('upsert_operations', records);
 
         // نُظهر نتيجة الرفع والتقرير مباشرة؛ لأن العمليات وصلت فعلًا.
-        // بعدها نعيد بناء ملفات المتبرعين على دفعات حتى لا يصير timeout.
-        App.toast(`تم رفع ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. جارٍ تحديث ملفات المتبرعين...`, 'ok');
+        // إذا كان خيار إعادة الاحتساب التلقائي معطّلًا، لا نعيد بناء ملفات المتبرعين الآن.
         showPhoneReport({ ...phoneReport, skipped, total: records.length });
         page = 0;
         load();
 
+        if (!shouldAutoRebuildDonors()) {
+          App.toast(`تم رفع ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. لم يتم تحديث ملفات المتبرعين حسب اختيارك.`, 'ok');
+          return;
+        }
+
+        App.toast(`تم رفع ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. جارٍ تحديث ملفات المتبرعين...`, 'ok');
         try {
           await App.rebuildDonorsInBatches(({ total, processed, remaining }) => {
             const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
