@@ -17,6 +17,15 @@
   <script src="assets/app.js"></script>
   <script>
     let page = 0, search = '', count = 0;
+    const CAMPAIGN_AUTO_REBUILD_KEY = 'campaigns:autoRebuildDonorsAfterUpload';
+
+    function shouldAutoRebuildDonors() {
+      return localStorage.getItem(CAMPAIGN_AUTO_REBUILD_KEY) !== '0';
+    }
+
+    function setAutoRebuildDonors(enabled) {
+      localStorage.setItem(CAMPAIGN_AUTO_REBUILD_KEY, enabled ? '1' : '0');
+    }
 
     (async () => {
       const session = await App.initShell('campaigns.html');
@@ -31,9 +40,16 @@
         <div class="content">
           <div class="panel fade-in" style="margin-bottom:1.5rem">
             <div class="panel-body">
+              <label style="display:flex;align-items:center;gap:.6rem;margin-bottom:1rem;cursor:pointer;font-weight:700">
+                <input type="checkbox" id="autoRebuildDonors" style="width:18px;height:18px" />
+                <span>إعادة احتساب ملفات المتبرعين بعد رفع المستهدفين</span>
+              </label>
+              <div class="muted" style="font-size:.9rem;margin-top:-.65rem;margin-bottom:1rem">
+                عطّل هذا الخيار عند رفع ملف حملات كبير، ثم أعد الاحتساب يدويًا من صفحة ملفات المتبرعين بعد الانتهاء.
+              </div>
               <div class="dropzone" id="dz">
                 <i class="fa-solid fa-file-arrow-up"></i>
-                <div style="font-weight:700;font-size:1.1rem">رفع ملف مستهدفين (CVS)</div>
+                <div style="font-weight:700;font-size:1.1rem">رفع ملف مستهدفين (CSV)</div>
                 <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة المطلوبة: الجوال، اسم الحملة، تاريخ الاستهداف — يُربط تلقائيًا بملفات المتبرعين</div>
                 <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />
               </div>
@@ -48,6 +64,9 @@
           </div>
         </div>`;
       wireDropzone();
+      const autoRebuild = document.getElementById('autoRebuildDonors');
+      autoRebuild.checked = shouldAutoRebuildDonors();
+      autoRebuild.addEventListener('change', (e) => setAutoRebuildDonors(e.target.checked));
       let t;
       document.getElementById('search').addEventListener('input', (e) => {
         clearTimeout(t); t = setTimeout(() => { search = e.target.value.trim(); page = 0; load(); }, 350);
@@ -66,7 +85,7 @@
 
     async function handleFile(file) {
       const dz = document.getElementById('dz');
-      dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ المعالجة وتحديث الملفات...</div><div class="muted">' + App.esc(file.name) + '</div>';
+      dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ معالجة ملف المستهدفين...</div><div class="muted">' + App.esc(file.name) + '</div>';
       try {
         const rows = await App.readExcel(file);
         if (!rows.length) throw new Error('الملف فارغ');
@@ -76,7 +95,7 @@
         for (const row of rows) {
           const phoneRaw = App.pick(row, ['الجوال']);
           const norm = App.normalizePhone(phoneRaw);
-          if (norm.phone === null) {
+          if (norm.status !== 'صحيح') {
             skipped++;
             if (phoneRaw != null && String(phoneRaw).trim() !== '') {
               rejected.push({
@@ -96,12 +115,28 @@
         if (!records.length) throw new Error('لا توجد صفوف صالحة. تأكد من عمود الجوال.');
 
         const inserted = await App.rpcInBatches('insert_campaign_targets', records);
-        const { error: rpcErr } = await App.sb.rpc('recalculate_donors');
-        if (rpcErr) throw rpcErr;
 
-        App.toast(`تمت إضافة ${inserted} سجل استهداف${skipped ? ` (تخطّي ${skipped})` : ''} وتحديث ملفات المتبرعين.`, 'ok');
+        App.toast(`تم حفظ/تحديث ${inserted} سجل استهداف${skipped ? ` (تخطّي ${skipped})` : ''}.`, 'ok');
         if (rejected.length) showRejectedReport(rejected);
         page = 0; load();
+
+        if (!shouldAutoRebuildDonors()) {
+          App.toast('تم رفع المستهدفين. لم يتم تحديث ملفات المتبرعين حسب اختيارك.', 'ok');
+          return;
+        }
+
+        try {
+          await App.rebuildDonorsInBatches(({ total, processed, remaining }) => {
+            const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
+            dz.innerHTML = `
+              <div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div>
+              <div style="font-weight:700">جارٍ تحديث ملفات المتبرعين على دفعات... ${pct}%</div>
+              <div class="muted">تم ${App.fmtNum(processed)} من ${App.fmtNum(total)} — المتبقي ${App.fmtNum(remaining)}</div>`;
+          });
+          App.toast('تم رفع المستهدفين وتحديث ملفات المتبرعين بنجاح.', 'ok');
+        } catch (recalcErr) {
+          App.toast(`تم رفع المستهدفين، لكن لم يكتمل تحديث ملفات المتبرعين: ${recalcErr.message || recalcErr}`, 'err');
+        }
       } catch (e) {
         App.toast(e.message || 'فشل الرفع', 'err');
       } finally {
@@ -121,14 +156,14 @@
     async function load() {
       const area = document.getElementById('tableArea');
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
-      let q = App.sb.from('campaign_targets').select('*', { count:'exact' })
+      let q = App.sb.from('campaign_targets').select('*', { count:'estimated' })
         .order('target_date', { ascending:false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       if (search) q = q.or(`phone.ilike.%${search}%,campaign_name.ilike.%${search}%`);
       const { data, count:c, error } = await q;
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
       count = c || 0;
-      document.getElementById('cnt').textContent = `(${count.toLocaleString('en-US')} سجل)`;
+      document.getElementById('cnt').textContent = `(${count.toLocaleString('en-US')} سجل تقريبًا)`;
       if (!data.length) {
         area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد سجلات استهداف بعد.</div>';
         return;

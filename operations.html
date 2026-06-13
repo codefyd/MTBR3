@@ -134,16 +134,16 @@
 
         // نُظهر نتيجة الرفع والتقرير مباشرة؛ لأن العمليات وصلت فعلًا.
         // إذا كان خيار إعادة الاحتساب التلقائي معطّلًا، لا نعيد بناء ملفات المتبرعين الآن.
-        showPhoneReport({ ...phoneReport, skipped, total: records.length });
+        showPhoneReport({ ...phoneReport, skipped, total: records.length, saved: upserted });
         page = 0;
         load();
 
         if (!shouldAutoRebuildDonors()) {
-          App.toast(`تم رفع ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. لم يتم تحديث ملفات المتبرعين حسب اختيارك.`, 'ok');
+          App.toast(`تم حفظ/تحديث ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. لم يتم تحديث ملفات المتبرعين حسب اختيارك.`, 'ok');
           return;
         }
 
-        App.toast(`تم رفع ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. جارٍ تحديث ملفات المتبرعين...`, 'ok');
+        App.toast(`تم حفظ/تحديث ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. جارٍ تحديث ملفات المتبرعين...`, 'ok');
         try {
           await App.rebuildDonorsInBatches(({ total, processed, remaining }) => {
             const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
@@ -257,12 +257,12 @@
           </div>
           <div class="panel-body" style="overflow:auto">
             <div class="row g-3" style="margin-bottom:1rem">
-              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">صفوف مقبولة</div><div class="kpi-value">${App.fmtNum(report.total || 0)}</div></div></div>
+              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">صفوف مقروءة</div><div class="kpi-value">${App.fmtNum(report.total || 0)}</div></div></div>
+              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">صفوف محفوظة/محدثة</div><div class="kpi-value">${App.fmtNum(report.saved || 0)}</div></div></div>
               <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">أرقام صحيحة</div><div class="kpi-value">${App.fmtNum(report.valid || 0)}</div></div></div>
-              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">أرقام خاطئة</div><div class="kpi-value">${App.fmtNum(report.invalid || 0)}</div></div></div>
-              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">أرقام فارغة</div><div class="kpi-value">${App.fmtNum(report.empty || 0)}</div></div></div>
+              <div class="col-6 col-lg-3"><div class="kpi-card"><div class="kpi-label">أرقام خاطئة/فارغة</div><div class="kpi-value">${App.fmtNum((report.invalid || 0) + (report.empty || 0))}</div></div></div>
             </div>
-            <p class="muted" style="margin-top:0">تم قبول جميع الصفوف الصالحة من ناحية رقم العملية. الأرقام الخاطئة والفارغة تدخل الآن في العمليات وملفات المتبرعين كمراجعة، ولا تُحذف من التحليلات.${report.skipped ? ` تم تخطي ${App.fmtNum(report.skipped)} صف بلا رقم/عملية.` : ''}${reviewRows.length > 100 ? ' (عرض أول 100 فقط — التصدير يشمل الكل)' : ''}</p>
+            <p class="muted" style="margin-top:0">تم قبول جميع الصفوف الصالحة من ناحية رقم العملية. الفرق بين الصفوف المقروءة والمحفوظة/المحدثة يعني غالبًا تكرارًا مطابقًا داخل نفس الدفعة، وليس دمجًا لاختلاف المشروع أو الجوال. الأرقام الخاطئة والفارغة تدخل في العمليات وملفات المتبرعين كمراجعة، ولا تُحذف من التحليلات.${report.skipped ? ` تم تخطي ${App.fmtNum(report.skipped)} صف بلا رقم/عملية.` : ''}${reviewRows.length > 100 ? ' (عرض أول 100 فقط — التصدير يشمل الكل)' : ''}</p>
             ${reviewRows.length ? `<div class="table-wrap"><table class="data">
               <thead><tr><th>رقم</th><th>#العملية</th><th>الاسم</th><th>الجوال كما ورد</th><th>الحالة</th><th>الملاحظة</th></tr></thead>
               <tbody>${preview}</tbody>
