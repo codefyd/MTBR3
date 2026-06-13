@@ -233,20 +233,77 @@ function toISO(v) {
   const p = new Date(String(v).trim());
   return isNaN(p.getTime()) ? null : p.toISOString();
 }
-// مطابقة أسماء الأعمدة العربية بمرونة (تجاهل المسافات و #)
+// تطبيع اسم العمود حتى نقبل اختلافات Excel/CSV مثل BOM، مسافات خفية، _، -، واختلافات الهمزات
+function normalizeHeaderName(value) {
+  return String(value || '')
+    .replace(/[\uFEFF\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .replace(/[\s#_\-–—:：.،,؛;\/\\()\[\]{}]+/g, '')
+    .replace(/[إأآٱا]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ىي]/g, 'ي')
+    .toLowerCase()
+    .trim();
+}
+
+// مطابقة أسماء الأعمدة العربية بمرونة عالية
 function pick(row, keys) {
+  const wanted = keys.map(normalizeHeaderName);
   for (const k of Object.keys(row)) {
-    const norm = k.replace(/\s|#/g, '').trim();
-    for (const want of keys) {
-      if (norm === want.replace(/\s|#/g, '').trim()) return row[k];
-    }
+    const norm = normalizeHeaderName(k);
+    if (wanted.includes(norm)) return row[k];
   }
   return null;
 }
+
+function parseDelimitedText(text, delimiter) {
+  const rows = [];
+  let row = [], cell = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '"') {
+      if (inQuotes && next === '"') { cell += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === delimiter && !inQuotes) {
+      row.push(cell); cell = '';
+    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && next === '\n') i++;
+      row.push(cell); cell = '';
+      if (row.some(v => String(v).trim() !== '')) rows.push(row);
+      row = [];
+    } else {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some(v => String(v).trim() !== '')) rows.push(row);
+  if (!rows.length) return [];
+  const headers = rows[0].map(h => String(h || '').replace(/^\uFEFF/, '').trim());
+  return rows.slice(1).map(cols => {
+    const obj = {};
+    headers.forEach((h, i) => { obj[h || `عمود_${i + 1}`] = cols[i] ?? null; });
+    return obj;
+  });
+}
+
 // قراءة ملف Excel/CSV وإرجاع مصفوفة صفوف ككائنات
-// raw:false يجعل القيم نصوصاً منسّقة فلا تتحول الأرقام الطويلة (مثل الجوال) لصيغة علمية
+// CSV: ندعم الفاصلة، الفاصلة المنقوطة، والتاب لأن بعض ملفات المتاجر تخرج TSV رغم امتداد CSV.
 async function readExcel(file) {
   const buf = await file.arrayBuffer();
+  const name = (file?.name || '').toLowerCase();
+
+  if (/\.(csv|txt|tsv)$/.test(name)) {
+    const text = new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
+    const firstLine = text.split(/\r?\n/).find(l => l.trim()) || '';
+    const counts = {
+      '\t': (firstLine.match(/\t/g) || []).length,
+      ';': (firstLine.match(/;/g) || []).length,
+      ',': (firstLine.match(/,/g) || []).length,
+    };
+    const delimiter = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] || ',';
+    return parseDelimitedText(text, delimiter);
+  }
+
   const wb = window.XLSX.read(buf, { type: 'array', raw: false, codepage: 65001 });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return window.XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
