@@ -35,12 +35,12 @@
       total_amount:1, donations_count:1, status:1, category:1,
       sat_count:1, sun_count:1, mon_count:1, tue_count:1, wed_count:1, thu_count:1, fri_count:1,
       period_morning:1, period_noon:1, period_evening:1, period_night:1,
-      targeted_count:1, last_targeted:1,
+      targeted_count:1, last_targeted:1, responded:1, response_date:1,
     };
     // الفلاتر متعددة الاختيار + حدّ أدنى لعدد مرات اليوم/الفترة
     const f = {
       search:'', statuses:[], cats:[], projects:[], minCount:'', maxCount:'', minTotal:'',
-      targeted:'', lastBefore:'', lastAfter:'',
+      targeted:'', lastBefore:'', lastAfter:'', responded:'',
       days:[], dayMin:'', periods:[], periodMin:'',
     };
 
@@ -183,6 +183,8 @@
                   <div class="col-6 col-md-3"><label class="lbl">إجمالي التبرعات (أكثر من)</label><input type="number" class="field" id="fMinTotal" /></div>
                   <div class="col-6 col-md-3"><label class="lbl">الاستهداف في حملة</label>
                     <select class="field" id="fTargeted"><option value="">الكل</option><option value="yes">تم استهدافه</option><option value="no">لم يُستهدف</option></select></div>
+                  <div class="col-6 col-md-3"><label class="lbl">الاستجابة للحملة</label>
+                    <select class="field" id="fResponded"><option value="">الكل</option><option value="yes">استجاب</option><option value="no">لم يستجب</option></select></div>
                 </div>
                 <!-- 2-ب: نطاق آخر تبرع -->
                 <div class="row g-3" style="margin-top:.25rem">
@@ -253,6 +255,7 @@
       bind('fMinCount', 'minCount', true); bind('fMaxCount', 'maxCount', true);
       bind('fMinTotal', 'minTotal', true);
       bind('fTargeted', 'targeted');
+      bind('fResponded', 'responded');
       bind('fLastAfter', 'lastAfter'); bind('fLastBefore', 'lastBefore');
       bind('fDayMin', 'dayMin', true); bind('fPeriodMin', 'periodMin', true);
 
@@ -326,9 +329,9 @@
 
     function resetFilters() {
       f.search = ''; f.minCount = ''; f.maxCount = ''; f.minTotal = '';
-      f.targeted = ''; f.lastAfter = ''; f.lastBefore = ''; f.dayMin = ''; f.periodMin = '';
+      f.targeted = ''; f.lastAfter = ''; f.lastBefore = ''; f.dayMin = ''; f.periodMin = ''; f.responded = '';
       f.statuses = []; f.cats = []; f.days = []; f.periods = []; f.projects = [];
-      ['fSearch','fMinCount','fMaxCount','fMinTotal','fTargeted','fLastAfter','fLastBefore','fDayMin','fPeriodMin']
+      ['fSearch','fMinCount','fMaxCount','fMinTotal','fTargeted','fResponded','fLastAfter','fLastBefore','fDayMin','fPeriodMin']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       document.querySelectorAll('.chip-toggle.on').forEach(b => b.classList.remove('on'));
       document.querySelectorAll('#ddProjPanel input[type=checkbox]:checked').forEach(cb => cb.checked = false);
@@ -367,6 +370,8 @@
       if (f.minTotal !== '') q = q.gte('total_amount', Number(f.minTotal));
       if (f.targeted === 'yes') q = q.gt('targeted_count', 0);
       if (f.targeted === 'no') q = q.eq('targeted_count', 0);
+      if (f.responded === 'yes') q = q.eq('responded', true);
+      if (f.responded === 'no') { q = q.gt('targeted_count', 0); q = q.eq('responded', false); }
       if (f.lastAfter) q = q.gte('last_donation', new Date(f.lastAfter).toISOString());
       if (f.lastBefore) q = q.lt('last_donation', new Date(f.lastBefore).toISOString());
       // الأيام: تبرّع في أيٍّ منها بعدد مرات ≥ الحد (افتراضي 1)
@@ -393,7 +398,7 @@
       const area = document.getElementById('tableArea');
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
 
-      let q = App.sb.from('donors').select('phone,phone_raw,phone_status,phone_issue,donor_name,first_donation,last_donation,total_amount,donations_count,projects,status,category,sat_count,sun_count,mon_count,tue_count,wed_count,thu_count,fri_count,period_morning,period_noon,period_evening,period_night,no_time_count,targeted_count,last_targeted', { count:'estimated' })
+      let q = App.sb.from('donors').select('phone,phone_raw,phone_status,phone_issue,donor_name,first_donation,last_donation,total_amount,donations_count,projects,status,category,sat_count,sun_count,mon_count,tue_count,wed_count,thu_count,fri_count,period_morning,period_noon,period_evening,period_night,no_time_count,targeted_count,last_targeted,responded,response_date,response_lag_days', { count:'estimated' })
         .order(sortCol, { ascending: sortAsc, nullsFirst: false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       q = buildQuery(q);
@@ -443,6 +448,8 @@
           ${dayTd}${periodTd}
           <td>${App.fmtNum(r.targeted_count || 0)}</td>
           <td>${App.fmtDate(r.last_targeted)}</td>
+          <td>${r.targeted_count ? `<span class="badge-x ${r.responded ? 'badge-active' : 'badge-inactive'}">${r.responded ? 'استجاب' : 'لم يستجب'}</span>${r.responded && r.response_lag_days != null ? `<div class="muted" style="font-size:.72rem;margin-top:.2rem">خلال ${App.fmtNum(r.response_lag_days)} يوم</div>` : ''}` : '<span class="muted">—</span>'}</td>
+          <td>${App.fmtDate(r.response_date)}</td>
         </tr>`;
       }).join('');
 
@@ -457,6 +464,7 @@
             ${sortableTh('status','الحالة')}${sortableTh('category','الفئة')}
             ${dayTh}${periodTh}
             ${sortableTh('targeted_count','مرات الاستهداف')}${sortableTh('last_targeted','آخر استهداف')}
+            ${sortableTh('responded','الاستجابة')}${sortableTh('response_date','تاريخ الاستجابة')}
           </tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table></div>
@@ -656,27 +664,15 @@
     }
 
     function exportJar(rows) {
-      const DAY = DAY_COLS, PER = PERIOD_COLS;
-      const data = rows.map(r => {
-        const o = {
-          'الاسم': r.donor_name || '',
-          'رقم الجوال': (r.phone_status === 'صحيح' ? r.phone : (r.phone_raw || '')) || '',
-          'حالة الرقم': r.phone_status || 'صحيح',
-          'ملاحظة الرقم': r.phone_issue || '',
-          'أول تبرع': App.fmtDate(r.first_donation),
-          'آخر تبرع': App.fmtDate(r.last_donation),
-          'إجمالي التبرعات': r.total_amount || 0,
-          'عدد التبرعات': r.donations_count || 0,
-          'المشاريع': (r.projects || []).join('، '),
-          'حالة العميل': r.status || '',
-          'فئة العميل': r.category || '',
-        };
-        DAY.forEach(d => o[d.label] = r[d.key] || 0);
-        PER.forEach(p => o['فترة ' + p.label] = r[p.key] || 0);
-        o['مرات الاستهداف'] = r.targeted_count || 0;
-        o['آخر استهداف'] = App.fmtDate(r.last_targeted);
-        return o;
-      });
+      // الحصالة تُصدّر خمسة أعمدة فقط (قابلة للتغيير مستقبلاً):
+      // الاسم - الجوال - إجمالي التبرعات - الحالة - الفئة
+      const data = rows.map(r => ({
+        'الاسم': r.donor_name || '',
+        'الجوال': (r.phone_status === 'صحيح' ? r.phone : (r.phone_raw || '')) || '',
+        'إجمالي التبرعات': r.total_amount || 0,
+        'الحالة': r.status || '',
+        'الفئة': r.category || '',
+      }));
       const ws = window.XLSX.utils.json_to_sheet(data);
       const wb = window.XLSX.utils.book_new();
       window.XLSX.utils.book_append_sheet(wb, ws, 'الحصالة');

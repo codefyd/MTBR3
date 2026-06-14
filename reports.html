@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>التقارير الشهرية والسنوية | منصة ولاء</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div class="app-shell" id="shell"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    const DOW_AR    = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+    const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+    let currentYear = new Date().getFullYear();
+    let lastData = null; // لآخر تقرير محمّل (للتصدير)
+
+    (async () => {
+      const session = await App.initShell('reports.html');
+      if (!session) return;
+      renderShell();
+      loadReport(currentYear);
+    })();
+
+    function renderShell() {
+      document.getElementById('mainArea').innerHTML = `
+        <div class="topbar">
+          <h1><i class="fa-solid fa-chart-pie text-gold"></i> التقارير الشهرية والسنوية</h1>
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <label class="muted" style="font-size:.9rem">السنة</label>
+            <select class="field" id="yearSel" style="max-width:140px"></select>
+            <button class="btn-x btn-ghost btn-sm" id="exportBtn"><i class="fa-solid fa-file-excel"></i> تصدير Excel</button>
+          </div>
+        </div>
+        <div class="content" id="reportArea">
+          <div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div>
+          <div class="muted" style="margin-top:.6rem">جارٍ تحميل التقرير…</div></div>
+        </div>`;
+      document.getElementById('yearSel').addEventListener('change', (e) => {
+        currentYear = Number(e.target.value);
+        loadReport(currentYear);
+      });
+      document.getElementById('exportBtn').addEventListener('click', exportReport);
+    }
+
+    async function loadReport(year) {
+      const area = document.getElementById('reportArea');
+      area.innerHTML = `<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div>
+        <div class="muted" style="margin-top:.6rem">جارٍ احتساب تقرير سنة ${year}…</div></div>`;
+      const { data, error } = await App.sb.rpc('reports_stats', { p_year: year });
+      if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
+      if (!data) { area.innerHTML = `<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد بيانات.</div>`; return; }
+      lastData = data;
+      fillYearSelect(data.years_available || [], year);
+      renderReport(data);
+    }
+
+    function fillYearSelect(years, selected) {
+      const sel = document.getElementById('yearSel');
+      let list = (years || []).map(Number);
+      if (!list.includes(selected)) list.unshift(selected);
+      list = [...new Set(list)].sort((a, b) => b - a);
+      sel.innerHTML = list.map(y => `<option value="${y}" ${y === selected ? 'selected' : ''}>${y}</option>`).join('');
+    }
+
+    function pct(a, b) {
+      if (!b) return a ? 100 : 0;
+      return Math.round(((a - b) / b) * 100);
+    }
+
+    function renderReport(d) {
+      const yoy = pct(Number(d.year_sum), Number(d.prev_sum));
+      const yoyCls = yoy >= 0 ? 'var(--c-success)' : 'var(--c-danger)';
+      const yoyArrow = yoy >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
+      const bm = d.best_month;
+      const resp = d.response || {};
+      const respRate = resp.targeted ? Math.round((resp.responded / resp.targeted) * 100) : 0;
+
+      // بطاقات الأرقام الرئيسية
+      const cards = `
+        <div class="row g-3 fade-in" style="margin-bottom:1.25rem">
+          ${statCard('fa-sack-dollar', 'إجمالي تبرعات السنة', App.fmtMoney(d.year_sum), `${App.fmtNum(d.year_count)} تبرع`, true)}
+          ${statCard('fa-user-group', 'متبرعون فريدون', App.fmtNum(d.year_donors))}
+          ${statCard('fa-user-plus', 'متبرعون جدد هذه السنة', App.fmtNum(d.new_donors))}
+          ${statCard('fa-hand-holding-dollar', 'متوسط التبرع', App.fmtMoney(d.avg_donation))}
+        </div>`;
+
+      // صندوقا التميّز: أفضل شهر + مقارنة بالسنة السابقة
+      const highlight = `
+        <div class="row g-3 fade-in" style="margin-bottom:1.25rem">
+          <div class="col-12 col-lg-6">
+            <div class="highlight-box">
+              <div class="hb-label"><i class="fa-solid fa-trophy"></i> أفضل شهر (بالمبلغ)</div>
+              <div class="hb-value">${bm ? MONTHS_AR[bm.mo - 1] : '—'}</div>
+              <div class="hb-sub">${bm ? `${App.fmtMoney(bm.amt)} · ${App.fmtNum(bm.cnt)} تبرع` : 'لا بيانات'}</div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="highlight-box">
+              <div class="hb-label"><i class="fa-solid ${yoyArrow}"></i> مقارنة بسنة ${d.year - 1}</div>
+              <div class="hb-value" style="color:${yoyCls}">${yoy >= 0 ? '+' : ''}${yoy}%</div>
+              <div class="hb-sub">السنة السابقة: ${App.fmtMoney(d.prev_sum)} · ${App.fmtNum(d.prev_count)} تبرع</div>
+            </div>
+          </div>
+        </div>`;
+
+      // جدول التفصيل الشهري
+      const monthly = d.monthly || [];
+      const maxAmt = Math.max(1, ...monthly.map(m => Number(m.amt)));
+      const monthlyRows = monthly.map(m => `
+        <tr>
+          <td style="font-weight:600">${MONTHS_AR[m.mo - 1]}</td>
+          <td style="font-weight:700">${App.fmtMoney(m.amt)}</td>
+          <td>${App.fmtNum(m.cnt)}</td>
+          <td>${App.fmtNum(m.donors)}</td>
+          <td>${App.fmtNum(m.new)}</td>
+          <td style="min-width:140px"><div class="bar-track"><div class="bar-fill" style="width:${Math.round((Number(m.amt) / maxAmt) * 100)}%"></div></div></td>
+        </tr>`).join('');
+
+      const monthlyTable = `
+        <div class="chart-card fade-in" style="margin-bottom:1.25rem">
+          <h3><i class="fa-solid fa-calendar-days"></i> التفصيل الشهري — ${d.year}</h3>
+          <div class="table-wrap"><table class="data" style="white-space:normal">
+            <thead><tr><th>الشهر</th><th>المبلغ</th><th>عدد التبرعات</th><th>متبرعون فريدون</th><th>جدد</th><th>المقارنة</th></tr></thead>
+            <tbody>${monthlyRows || '<tr><td colspan="6" class="muted">لا بيانات لهذه السنة.</td></tr>'}</tbody>
+          </table></div>
+        </div>`;
+
+      // توزيع أيام الأسبوع
+      const dowArr = Array(7).fill(0);
+      (d.dow_dist || []).forEach(x => dowArr[x.dow] = Number(x.cnt));
+      const maxDow = Math.max(1, ...dowArr);
+      const dowOrder = [6, 0, 1, 2, 3, 4, 5];
+      const dowBars = dowOrder.map(i => barRow(DOW_AR[i], dowArr[i], maxDow, App.fmtNum(dowArr[i]))).join('');
+
+      // توزيع الفترات
+      const pd = d.period_dist || {};
+      const periods = [
+        ['صباحًا (4ص–12م)', Number(pd.morning || 0)],
+        ['ظهرًا (12م–4م)',  Number(pd.noon || 0)],
+        ['مساءً (4م–7م)',   Number(pd.evening || 0)],
+        ['ليلًا (7م–4ص)',   Number(pd.night || 0)],
+      ];
+      const maxPer = Math.max(1, ...periods.map(p => p[1]));
+      const periodBars = periods.map(p => barRow(p[0], p[1], maxPer, App.fmtNum(p[1]))).join('');
+
+      // أعلى المشاريع
+      const tp = d.top_projects || [];
+      const maxTp = Math.max(1, ...tp.map(p => Number(p.amt)));
+      const projBars = tp.length
+        ? tp.map(p => barRow(p.project || '—', Number(p.amt), maxTp, App.fmtMoney(p.amt))).join('')
+        : '<div class="muted">لا بيانات.</div>';
+
+      // أعلى المتبرعين
+      const td = d.top_donors || [];
+      const donorRows = td.length
+        ? td.map((x, i) => `<tr>
+            <td>${i + 1}</td>
+            <td>${App.esc(x.donor_name) || '—'}</td>
+            <td dir="ltr" style="text-align:right">${App.esc(x.phone)}</td>
+            <td style="font-weight:700">${App.fmtMoney(x.amt)}</td>
+            <td>${App.fmtNum(x.cnt)}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" class="muted">لا بيانات.</td></tr>';
+
+      // ملخص الاستجابة للحملات
+      const respCard = `
+        <div class="chart-card">
+          <h3><i class="fa-solid fa-reply"></i> استجابة المتبرعين للحملات (إجمالي)</h3>
+          <div class="bar-row" style="grid-template-columns:1fr auto"><span class="bar-label">مستهدفون</span><span class="bar-val">${App.fmtNum(resp.targeted || 0)}</span></div>
+          <div class="bar-row" style="grid-template-columns:1fr auto"><span class="bar-label">مستجيبون</span><span class="bar-val">${App.fmtNum(resp.responded || 0)}</span></div>
+          <div class="bar-row" style="grid-template-columns:1fr auto"><span class="bar-label">نسبة الاستجابة</span><span class="bar-val">${respRate}%</span></div>
+          <div class="bar-row" style="grid-template-columns:1fr auto"><span class="bar-label">متوسط أيام الاستجابة</span><span class="bar-val">${resp.avg_lag != null ? App.fmtNum(resp.avg_lag) : '—'}</span></div>
+        </div>`;
+
+      document.getElementById('reportArea').innerHTML = `
+        ${cards}
+        ${highlight}
+        ${monthlyTable}
+        <div class="row g-3 fade-in" style="margin-bottom:1.25rem">
+          <div class="col-12 col-lg-6"><div class="chart-card"><h3><i class="fa-solid fa-calendar-week"></i> توزيع التبرعات على أيام الأسبوع</h3>${dowBars}</div></div>
+          <div class="col-12 col-lg-6"><div class="chart-card"><h3><i class="fa-solid fa-clock"></i> توزيع التبرعات على الفترات</h3>${periodBars}</div></div>
+          <div class="col-12 col-lg-6"><div class="chart-card"><h3><i class="fa-solid fa-diagram-project"></i> أعلى المشاريع (بالمبلغ)</h3>${projBars}</div></div>
+          <div class="col-12 col-lg-6">${respCard}</div>
+        </div>
+        <div class="chart-card fade-in">
+          <h3><i class="fa-solid fa-ranking-star"></i> أعلى 10 متبرعين — ${d.year}</h3>
+          <div class="table-wrap"><table class="data" style="white-space:normal">
+            <thead><tr><th>#</th><th>الاسم</th><th>الجوال</th><th>الإجمالي</th><th>العدد</th></tr></thead>
+            <tbody>${donorRows}</tbody>
+          </table></div>
+        </div>`;
+    }
+
+    function statCard(icon, label, value, sub = '', gold = false) {
+      return `<div class="col-6 col-lg-3">
+        <div class="stat-card ${gold ? 'is-gold' : ''}">
+          <div class="stat-head"><i class="fa-solid ${icon}"></i> ${label}</div>
+          <div class="stat-value">${value}</div>
+          ${sub ? `<div class="stat-sub">${sub}</div>` : ''}
+        </div></div>`;
+    }
+
+    function barRow(label, value, max, displayVal) {
+      const p = Math.round((value / max) * 100);
+      return `<div class="bar-row">
+        <span class="bar-label">${App.esc(label)}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${p}%"></div></div>
+        <span class="bar-val">${displayVal}</span>
+      </div>`;
+    }
+
+    // تصدير التقرير الحالي إلى Excel (ورقة ملخص + ورقة شهرية + أعلى المتبرعين)
+    function exportReport() {
+      if (!lastData) { App.toast('لا يوجد تقرير للتصدير.', 'err'); return; }
+      const d = lastData;
+      const resp = d.response || {};
+      const summary = [
+        { 'البند': 'السنة', 'القيمة': d.year },
+        { 'البند': 'إجمالي تبرعات السنة', 'القيمة': d.year_sum },
+        { 'البند': 'عدد التبرعات', 'القيمة': d.year_count },
+        { 'البند': 'متبرعون فريدون', 'القيمة': d.year_donors },
+        { 'البند': 'متبرعون جدد', 'القيمة': d.new_donors },
+        { 'البند': 'متوسط التبرع', 'القيمة': Math.round((d.avg_donation || 0) * 100) / 100 },
+        { 'البند': `إجمالي السنة السابقة (${d.year - 1})`, 'القيمة': d.prev_sum },
+        { 'البند': 'مستهدفون (إجمالي)', 'القيمة': resp.targeted || 0 },
+        { 'البند': 'مستجيبون (إجمالي)', 'القيمة': resp.responded || 0 },
+      ];
+      const monthly = (d.monthly || []).map(m => ({
+        'الشهر': MONTHS_AR[m.mo - 1],
+        'المبلغ': m.amt,
+        'عدد التبرعات': m.cnt,
+        'متبرعون فريدون': m.donors,
+        'متبرعون جدد': m.new,
+      }));
+      const donors = (d.top_donors || []).map((x, i) => ({
+        '#': i + 1,
+        'الاسم': x.donor_name || '',
+        'الجوال': x.phone || '',
+        'الإجمالي': x.amt,
+        'عدد التبرعات': x.cnt,
+      }));
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(summary), 'ملخص');
+      window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(monthly), 'التفصيل الشهري');
+      window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(donors), 'أعلى المتبرعين');
+      window.XLSX.writeFile(wb, `تقرير-${d.year}.xlsx`);
+      App.toast('تم تصدير التقرير.', 'ok');
+    }
+  </script>
+</body>
+</html>

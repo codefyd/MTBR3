@@ -16,13 +16,18 @@
   <script src="assets/app.js"></script>
   <script>
     let inactiveDays = 90;
+    let responseDays = 30;
     let cats = [];
 
     (async () => {
       const session = await App.initShell('settings.html');
       if (!session) return;
       const { data } = await App.sb.from('settings').select('*').eq('id', 1).single();
-      if (data) { inactiveDays = data.inactive_days; cats = data.categories || []; }
+      if (data) {
+        inactiveDays = data.inactive_days;
+        responseDays = (data.response_days ?? 30);
+        cats = data.categories || [];
+      }
       renderPage();
     })();
 
@@ -39,6 +44,18 @@
                   <div style="max-width:240px">
                     <label class="lbl">عدد الأيام</label>
                     <input type="number" min="1" class="field" id="inactiveDays" value="${inactiveDays}" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="panel fade-in">
+                <div class="panel-head"><h2><i class="fa-solid fa-reply"></i> أيام الاستجابة للحملات</h2></div>
+                <div class="panel-body">
+                  <p class="muted" style="margin-top:0">المتبرع الذي تبرّع خلال هذه المدة بعد <strong>آخر استهداف</strong> له يُعتبر <strong>مستجيبًا</strong> للحملة. تُحسب هذه القيمة تلقائيًا عند إعادة احتساب الملفات.</p>
+                  <div style="max-width:240px">
+                    <label class="lbl">عدد الأيام</label>
+                    <input type="number" min="1" class="field" id="responseDays" value="${responseDays}" />
                   </div>
                 </div>
               </div>
@@ -104,16 +121,22 @@
     async function save() {
       const btn = document.getElementById('saveBtn');
       const days = Number(document.getElementById('inactiveDays').value) || 90;
+      const respDays = Number(document.getElementById('responseDays').value) || 30;
       const recalcAfter = document.getElementById('recalcAfter').checked;
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-x"></span> جارٍ الحفظ...';
       try {
-        const { error } = await App.sb.rpc('update_settings', { p_days: days, p_categories: cats });
+        const { error } = await App.sb.rpc('update_settings', {
+          p_days: days, p_categories: cats, p_response_days: respDays,
+        });
         if (error) throw error;
         if (recalcAfter) {
-          const { error: e2 } = await App.sb.rpc('recalculate_donors');
-          if (e2) throw e2;
-          App.toast('تم حفظ الإعدادات وإعادة احتساب الملفات.', 'ok');
+          // إعادة الاحتساب على دفعات قصيرة لتفادي انقطاع التحديث (timeout)
+          await App.rebuildDonorsInBatches(({ processed, total, remaining }) => {
+            const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
+            btn.innerHTML = `<span class="spinner-x"></span> إعادة الاحتساب... ${pct}%`;
+          });
+          App.toast('تم حفظ الإعدادات وإعادة احتساب الملفات على دفعات.', 'ok');
         } else {
           App.toast('تم حفظ الإعدادات.', 'ok');
         }
