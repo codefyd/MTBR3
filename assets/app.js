@@ -227,10 +227,17 @@ function toNum(v) {
 function toISO(v) {
   if (v === null || v === undefined || v === '') return null;
 
+  // ثابت: إزاحة توقيت السعودية (UTC+3). نثبّت كل التواريخ عليه حتى لا يقفز اليوم.
+  const KSA = '+03:00';
+  function isoKSA(y, mo, d, H, M, S) {
+    const p = n => String(n).padStart(2, '0');
+    return `${y}-${p(mo)}-${p(d)}T${p(H)}:${p(M)}:${p(S)}${KSA}`;
+  }
+
   // 1) أرقام Excel التسلسلية للتاريخ
   if (typeof v === 'number' && window.XLSX?.SSF) {
     const d = window.XLSX.SSF.parse_date_code(v);
-    if (d) return new Date(Date.UTC(d.y, d.m - 1, d.d, d.H || 0, d.M || 0, Math.floor(d.S || 0))).toISOString();
+    if (d) return isoKSA(d.y, d.m, d.d, d.H || 0, d.M || 0, Math.floor(d.S || 0));
   }
 
   let s = String(v).trim();
@@ -264,8 +271,10 @@ function toISO(v) {
   function build(y, mo, d) {
     if (y < 100) y += 2000;                 // سنة من خانتين => 20XX
     if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-    const dt = new Date(Date.UTC(y, mo - 1, d, H, M, S));
-    return isNaN(dt.getTime()) ? null : dt.toISOString();
+    // تحقق من صحة التاريخ (مثلاً 31 فبراير مرفوض)
+    const chk = new Date(Date.UTC(y, mo - 1, d));
+    if (chk.getUTCMonth() !== mo - 1 || chk.getUTCDate() !== d) return null;
+    return isoKSA(y, mo, d, H, M, S);       // نثبّت بتوقيت السعودية بدون إزاحة
   }
 
   // ISO صريح: سنة-شهر-يوم
@@ -285,7 +294,10 @@ function toISO(v) {
 
   // محاولة أخيرة عبر محرّك المتصفح (للصيغ الإنجليزية الصريحة)
   const p = new Date(s);
-  return isNaN(p.getTime()) ? null : p.toISOString();
+  if (isNaN(p.getTime())) return null;
+  // نثبّت ناتج المحرّك بمكوّناته المحلية على توقيت السعودية بدون إزاحة
+  return isoKSA(p.getFullYear(), p.getMonth() + 1, p.getDate(),
+                p.getHours(), p.getMinutes(), p.getSeconds());
 }
 // تطبيع اسم العمود حتى نقبل اختلافات Excel/CSV مثل BOM، مسافات خفية، _، -، واختلافات الهمزات
 function normalizeHeaderName(value) {
