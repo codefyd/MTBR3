@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>المستهدفات اليومية | منصة ولاء</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* تنسيقات خاصة بجدول المستهدفات */
+    .tgt-head-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.85rem; margin-bottom:1.25rem; }
+    .tgt-head-card { background:var(--c-surface,#fff); border:1px solid var(--c-line); border-radius:14px; padding:.9rem 1.1rem; }
+    .tgt-head-card .h-label { font-size:.82rem; color:var(--c-ink-soft); margin-bottom:.25rem; }
+    .tgt-head-card .h-value { font-size:1.25rem; font-weight:700; color:var(--c-ink); }
+    .tgt-head-card.season { background:linear-gradient(135deg,var(--c-gold-lt),#fff); border-color:var(--c-gold); }
+    table.tgt { width:100%; border-collapse:collapse; font-size:.9rem; white-space:nowrap; }
+    table.tgt thead th { position:sticky; top:0; background:var(--c-primary,#0f5e54); color:#fff; padding:.6rem .5rem; font-weight:600; font-size:.82rem; z-index:2; }
+    table.tgt tbody td { padding:.4rem .5rem; border-bottom:1px solid var(--c-line); text-align:center; }
+    table.tgt tbody tr:hover { background:var(--c-gold-lt); }
+    table.tgt tr.is-friday td { background:rgba(15,94,84,.06); }
+    table.tgt tr.is-friday:hover td { background:rgba(15,94,84,.12); }
+    table.tgt tr.in-season td { box-shadow: inset 3px 0 0 var(--c-gold); }
+    .cell-input { width:90px; border:1px solid var(--c-line); border-radius:8px; padding:.25rem .4rem; text-align:center; font-size:.85rem; background:#fff; }
+    .cell-note { width:140px; }
+    .cum-ok  { color:#fff; background:var(--c-success,#2e9e6b); border-radius:8px; padding:.2rem .45rem; font-weight:700; display:inline-block; }
+    .cum-bad { color:#fff; background:var(--c-danger,#c0473e);  border-radius:8px; padding:.2rem .45rem; font-weight:700; display:inline-block; }
+    .pct-pill { font-weight:700; }
+    .tgt-foot td { font-weight:800; background:#f6f7f6; border-top:2px solid var(--c-primary); }
+    .save-dot { font-size:.7rem; margin-inline-start:.3rem; opacity:0; transition:opacity .25s; color:var(--c-success); }
+    .save-dot.show { opacity:1; }
+  </style>
+</head>
+<body>
+  <div class="app-shell" id="shell"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    const DOW_AR    = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+    const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+    // مُنسّقات التاريخ الهجري (تقويم أم القرى)
+    const hijriFull = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura',
+      { day:'numeric', month:'long', year:'numeric' });
+    const hijriParts = new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura',
+      { day:'numeric', month:'numeric', year:'numeric' });
+
+    function hijriOf(date) {
+      // يرجع {y, m, d} هجري (m من 1..12: 1=محرم ... 9=رمضان ... 12=ذو الحجة)
+      const parts = hijriParts.formatToParts(date);
+      const get = t => Number(parts.find(p => p.type === t)?.value);
+      return { y: get('year'), m: get('month'), d: get('day') };
+    }
+    function hijriText(date) { return hijriFull.format(date); }
+
+    // كشف الموسم تلقائيًا من الهجري
+    function seasonOf(date) {
+      const h = hijriOf(date);
+      if (h.m === 9) return 'رمضان';                       // كامل شهر رمضان
+      if (h.m === 12 && h.d >= 1 && h.d <= 10) return 'عشر الحج'; // عشر ذي الحجة
+      if (h.m === 1 && (h.d === 9 || h.d === 10)) return 'عاشوراء'; // تاسوعاء/عاشوراء
+      return null;
+    }
+
+    let year, month;            // الشهر المعروض
+    let data = null;            // بيانات الشهر من القاعدة
+    let saveTimers = {};        // مؤقتات حفظ الإدخال
+
+    (async () => {
+      const session = await App.initShell('targets.html');
+      if (!session) return;
+      const now = new Date();
+      year = now.getFullYear(); month = now.getMonth() + 1;
+      renderShell();
+      loadMonth();
+    })();
+
+    function renderShell() {
+      const monthOpts = MONTHS_AR.map((m, i) => `<option value="${i + 1}" ${i + 1 === month ? 'selected' : ''}>${m}</option>`).join('');
+      const yNow = new Date().getFullYear();
+      const yearOpts = [];
+      for (let y = yNow + 1; y >= yNow - 5; y--) yearOpts.push(`<option value="${y}" ${y === year ? 'selected' : ''}>${y}</option>`);
+
+      document.getElementById('mainArea').innerHTML = `
+        <div class="topbar">
+          <h1><i class="fa-solid fa-bullseye text-gold"></i> المستهدفات اليومية</h1>
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <select class="field" id="monthSel" style="max-width:130px">${monthOpts}</select>
+            <select class="field" id="yearSel" style="max-width:110px">${yearOpts.join('')}</select>
+            <button class="btn-x btn-ghost btn-sm" id="exportBtn"><i class="fa-solid fa-file-excel"></i> تصدير</button>
+          </div>
+        </div>
+        <div class="content" id="area">
+          <div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>
+        </div>`;
+      document.getElementById('monthSel').addEventListener('change', e => { month = Number(e.target.value); loadMonth(); });
+      document.getElementById('yearSel').addEventListener('change', e => { year = Number(e.target.value); loadMonth(); });
+      document.getElementById('exportBtn').addEventListener('click', exportMonth);
+    }
+
+    async function loadMonth() {
+      const area = document.getElementById('area');
+      area.innerHTML = `<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div>
+        <div class="muted" style="margin-top:.6rem">جارٍ تحميل ${MONTHS_AR[month - 1]} ${year}…</div></div>`;
+      const { data: d, error } = await App.sb.rpc('targets_month_data', { p_year: year, p_month: month });
+      if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
+      data = d;
+      render();
+    }
+
+    function render() {
+      const days = data.days || [];
+
+      // ترويسة الشهر: عدد الجُمع، يوم الراتب، الموسم
+      let fridays = 0;
+      const seasonsSet = new Set();
+      days.forEach(row => {
+        const dt = new Date(row.date + 'T00:00:00');
+        if (dt.getDay() === 5) fridays++;       // 5 = الجمعة
+        const s = seasonOf(dt);
+        if (s) seasonsSet.add(s);
+      });
+      // يوم الراتب: عُرفًا يوم 27 ميلادي (يظهر اسم اليوم الموافق)
+      const salaryDate = new Date(year, month - 1, 27);
+      const salaryDow = DOW_AR[salaryDate.getDay()];
+      const seasonText = data.season_override || (seasonsSet.size ? [...seasonsSet].join('، ') : 'لا يوجد');
+
+      const defaultDaily = Number(data.default_daily || 0);
+
+      const headCards = `
+        <div class="tgt-head-cards fade-in">
+          <div class="tgt-head-card">
+            <div class="h-label"><i class="fa-solid fa-calendar-day text-gold"></i> الشهر</div>
+            <div class="h-value">${MONTHS_AR[month - 1]} ${year}</div>
+          </div>
+          <div class="tgt-head-card">
+            <div class="h-label"><i class="fa-solid fa-mosque text-gold"></i> عدد الجُمع</div>
+            <div class="h-value">${App.fmtNum(fridays)}</div>
+          </div>
+          <div class="tgt-head-card">
+            <div class="h-label"><i class="fa-solid fa-money-check-dollar text-gold"></i> الراتب يوافق</div>
+            <div class="h-value">${salaryDow}</div>
+          </div>
+          <div class="tgt-head-card ${seasonsSet.size || data.season_override ? 'season' : ''}">
+            <div class="h-label"><i class="fa-solid fa-star-and-crescent text-gold"></i> الموسم</div>
+            <div class="h-value">${App.esc(seasonText)}</div>
+          </div>
+          <div class="tgt-head-card">
+            <div class="h-label"><i class="fa-solid fa-bullseye text-gold"></i> الهدف الافتراضي لليوم</div>
+            <div class="h-value">
+              <input type="number" min="0" class="cell-input" id="defaultDaily" value="${defaultDaily}" style="width:120px;font-weight:700" />
+              <span class="save-dot" id="dotDefault"><i class="fa-solid fa-check"></i></span>
+            </div>
+          </div>
+        </div>`;
+
+      // هل يوجد أي خصم في الشهر؟ => نُظهر عمود صافي التبرعات
+      const anyDeduction = days.some(r => Number(r.deduction || 0) > 0);
+
+      // حساب التراكمي
+      let cumTarget = 0, cumAchieved = 0;
+      let totTarget = 0, totAchieved = 0, totDed = 0, totDonors = 0, totNew = 0;
+
+      const rowsHtml = days.map(row => {
+        const dt = new Date(row.date + 'T00:00:00');
+        const dow = DOW_AR[dt.getDay()];
+        const isFriday = dt.getDay() === 5;
+        const season = data.season_override ? null : seasonOf(dt);
+        const target = Number(row.target || 0);
+        const achieved = Number(row.achieved || 0);
+        const ded = Number(row.deduction || 0);
+        const net = achieved - ded;
+        const remaining = Math.max(0, target - net);
+        const pct = target > 0 ? Math.round((net / target) * 100) : 0;
+        cumTarget += target; cumAchieved += net;
+        totTarget += target; totAchieved += net; totDed += ded; totDonors += Number(row.donors||0); totNew += Number(row.new_donors||0);
+        const avg = row.donors > 0 ? net / row.donors : 0;
+        const cumOk = cumAchieved >= cumTarget;
+        const pctCls = pct >= 100 ? 'cum-ok' : (pct >= 60 ? '' : '');
+        const pctColor = pct >= 100 ? 'var(--c-success)' : pct >= 60 ? 'var(--c-gold)' : 'var(--c-danger)';
+
+        return `<tr class="${isFriday ? 'is-friday' : ''} ${season ? 'in-season' : ''}" data-date="${row.date}">
+          <td>${dow}${season ? ` <i class="fa-solid fa-star-and-crescent" title="${season}" style="color:var(--c-gold);font-size:.7rem"></i>` : ''}</td>
+          <td>${App.fmtDate(row.date)}</td>
+          <td style="font-size:.8rem;color:var(--c-ink-soft)">${hijriText(dt)}</td>
+          <td><input type="number" min="0" class="cell-input inp-target" value="${target || ''}" placeholder="${defaultDaily}" /></td>
+          <td style="font-weight:700">${App.fmtMoney(achieved)}</td>
+          <td>${App.fmtMoney(remaining)}</td>
+          <td><input type="number" min="0" class="cell-input inp-ded" value="${ded || ''}" placeholder="0" /></td>
+          ${anyDeduction ? `<td style="font-weight:700">${App.fmtMoney(net)}</td>` : ''}
+          <td><span class="pct-pill" style="color:${pctColor}">${pct}%</span></td>
+          <td>${App.fmtMoney(cumTarget)}</td>
+          <td><span class="${cumOk ? 'cum-ok' : 'cum-bad'}">${App.fmtMoney(cumAchieved)}</span></td>
+          <td>${App.fmtNum(row.donors)}</td>
+          <td>${App.fmtNum(row.new_donors)}</td>
+          <td>${App.fmtMoney(avg)}</td>
+          <td><input type="text" class="cell-input cell-note inp-note" value="${App.esc(row.note || '')}" placeholder="—" /></td>
+        </tr>`;
+      }).join('');
+
+      const totPct = totTarget > 0 ? Math.round((totAchieved / totTarget) * 100) : 0;
+      const totAvg = totDonors > 0 ? totAchieved / totDonors : 0;
+
+      const footHtml = `<tr class="tgt-foot">
+        <td colspan="3">الإجمالي</td>
+        <td>${App.fmtMoney(totTarget)}</td>
+        <td>${App.fmtMoney(totAchieved + totDed)}</td>
+        <td>${App.fmtMoney(Math.max(0, totTarget - totAchieved))}</td>
+        <td>${App.fmtMoney(totDed)}</td>
+        ${anyDeduction ? `<td>${App.fmtMoney(totAchieved)}</td>` : ''}
+        <td>${totPct}%</td>
+        <td>${App.fmtMoney(totTarget)}</td>
+        <td>${App.fmtMoney(totAchieved)}</td>
+        <td>${App.fmtNum(totDonors)}</td>
+        <td>${App.fmtNum(totNew)}</td>
+        <td>${App.fmtMoney(totAvg)}</td>
+        <td></td>
+      </tr>`;
+
+      const headers = `
+        <th>اليوم</th><th>التاريخ الميلادي</th><th>التاريخ الهجري</th>
+        <th>الهدف</th><th>المحقق</th><th>المتبقي</th><th>خصم التبرعات</th>
+        ${anyDeduction ? '<th>صافي التبرعات</th>' : ''}
+        <th>نسبة التحقيق</th><th>تراكمي المستهدف</th><th>تراكمي التبرعات</th>
+        <th>المتبرعون</th><th>الجدد</th><th>معدل الفاتورة</th><th>ملاحظات</th>`;
+
+      document.getElementById('area').innerHTML = `
+        ${headCards}
+        <div class="panel fade-in">
+          <div class="panel-head">
+            <h2><i class="fa-solid fa-table-list"></i> جدول ${MONTHS_AR[month - 1]} ${year}</h2>
+            <span class="muted" style="font-size:.85rem">المحقق والمتبرعون يُحسبان تلقائيًا — الهدف/الخصم/الملاحظات إدخال يدوي يُحفظ فورًا</span>
+          </div>
+          <div class="panel-body">
+            <div class="table-wrap" style="max-height:70vh;overflow:auto">
+              <table class="tgt">
+                <thead><tr>${headers}</tr></thead>
+                <tbody>${rowsHtml}</tbody>
+                <tfoot>${footHtml}</tfoot>
+              </table>
+            </div>
+          </div>
+        </div>`;
+
+      wireInputs();
+    }
+
+    function wireInputs() {
+      // الهدف الافتراضي للشهر
+      const dd = document.getElementById('defaultDaily');
+      dd.addEventListener('input', () => debounceSaveMonth(Number(dd.value) || 0));
+
+      // إدخالات الأيام
+      document.querySelectorAll('tr[data-date]').forEach(tr => {
+        const date = tr.dataset.date;
+        const t = tr.querySelector('.inp-target');
+        const d = tr.querySelector('.inp-ded');
+        const n = tr.querySelector('.inp-note');
+        [t, d, n].forEach(inp => inp.addEventListener('input', () => debounceSaveDay(date, tr)));
+      });
+    }
+
+    function debounceSaveMonth(val) {
+      clearTimeout(saveTimers['__month']);
+      saveTimers['__month'] = setTimeout(async () => {
+        const { error } = await App.sb.rpc('save_monthly_target', {
+          p_month_key: data.month_key, p_default_daily: val, p_season_override: data.season_override || null,
+        });
+        if (error) { App.toast(error.message, 'err'); return; }
+        flash('dotDefault');
+        // إعادة التحميل لتحديث الأهداف الافتراضية والتراكمي
+        data.default_daily = val;
+        loadMonth();
+      }, 700);
+    }
+
+    function debounceSaveDay(date, tr) {
+      // هل كان عمود «صافي التبرعات» ظاهرًا قبل التعديل؟
+      const hadNet = (data.days || []).some(r => Number(r.deduction || 0) > 0);
+
+      // تحديث البيانات في الذاكرة فورًا
+      const row = (data.days || []).find(r => r.date === date);
+      if (row) {
+        const tv = tr.querySelector('.inp-target').value;
+        const dv = tr.querySelector('.inp-ded').value;
+        row.target = tv === '' ? Number(data.default_daily || 0) : Number(tv);
+        row.deduction = dv === '' ? 0 : Number(dv);
+        row.note = tr.querySelector('.inp-note').value || null;
+      }
+
+      const hasNet = (data.days || []).some(r => Number(r.deduction || 0) > 0);
+      if (hadNet !== hasNet) {
+        // ظهر/اختفى عمود الصافي => إعادة رسم كاملة (تتغير بنية الجدول)
+        render();
+        const t = document.querySelector(`tr[data-date="${date}"] .inp-ded`);
+        if (t) { t.focus(); const v = t.value; t.value = ''; t.value = v; }
+      } else {
+        recomputeDerived(); // تحديث محلي سلس دون فقد التركيز
+      }
+
+      clearTimeout(saveTimers[date]);
+      saveTimers[date] = setTimeout(async () => {
+        const target = tr.querySelector('.inp-target')?.value ?? '';
+        const ded = tr.querySelector('.inp-ded')?.value ?? '';
+        const note = tr.querySelector('.inp-note')?.value ?? '';
+        const { error } = await App.sb.rpc('save_daily_target', {
+          p_day: date,
+          p_target: target === '' ? null : Number(target),
+          p_deduction: ded === '' ? 0 : Number(ded),
+          p_note: note || null,
+        });
+        if (error) App.toast(error.message, 'err');
+      }, 800);
+    }
+
+    // إعادة حساب الأعمدة المشتقة (المتبقي/الصافي/النِسب/التراكمي/الألوان) محليًا
+    function recomputeDerived() {
+      const days = data.days || [];
+      const anyDed = days.some(r => Number(r.deduction || 0) > 0);
+      const trs = document.querySelectorAll('tr[data-date]');
+      let cumTarget = 0, cumAchieved = 0;
+      let totTarget = 0, totAchieved = 0, totDed = 0;
+      const dailyTarget = Number(data.default_daily || 0);
+      days.forEach((row, i) => {
+        const tr = trs[i]; if (!tr) return;
+        const target = Number(row.target || 0);
+        const achieved = Number(row.achieved || 0);
+        const ded = Number(row.deduction || 0);
+        const net = achieved - ded;
+        const remaining = Math.max(0, target - net);
+        const pct = target > 0 ? Math.round((net / target) * 100) : 0;
+        cumTarget += target; cumAchieved += net;
+        totTarget += target; totAchieved += net; totDed += ded;
+        const cells = tr.children;
+        // ترتيب الأعمدة: 0 اليوم،1 ميلادي،2 هجري،3 الهدف(input)،4 المحقق،5 المتبقي،
+        // 6 خصم(input)،[7 صافي إن وُجد]، نسبة، تراكمي مستهدف، تراكمي تبرعات، ...
+        let idx = 5;
+        cells[idx++].textContent = App.fmtMoney(remaining);
+        idx++; // خلية الخصم (input) نتركها
+        if (anyDed) cells[idx++].textContent = App.fmtMoney(net);
+        const pctColor = pct >= 100 ? 'var(--c-success)' : pct >= 60 ? 'var(--c-gold)' : 'var(--c-danger)';
+        cells[idx++].innerHTML = `<span class="pct-pill" style="color:${pctColor}">${pct}%</span>`;
+        cells[idx++].textContent = App.fmtMoney(cumTarget);
+        const cumOk = cumAchieved >= cumTarget;
+        cells[idx++].innerHTML = `<span class="${cumOk ? 'cum-ok' : 'cum-bad'}">${App.fmtMoney(cumAchieved)}</span>`;
+        // المتبرعون/الجدد/المعدل: المعدل قد يتغير مع الصافي
+        const avg = row.donors > 0 ? net / row.donors : 0;
+        cells[idx + 2].textContent = App.fmtMoney(avg);
+      });
+    }
+
+    function flash(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 1200);
+    }
+
+    function exportMonth() {
+      if (!data) return;
+      const days = data.days || [];
+      const anyDed = days.some(r => Number(r.deduction || 0) > 0);
+      const defaultDaily = Number(data.default_daily || 0);
+      let cumTarget = 0, cumAchieved = 0;
+      const out = days.map(row => {
+        const dt = new Date(row.date + 'T00:00:00');
+        const target = Number(row.target || 0);
+        const achieved = Number(row.achieved || 0);
+        const ded = Number(row.deduction || 0);
+        const net = achieved - ded;
+        cumTarget += target; cumAchieved += net;
+        const pct = target > 0 ? Math.round((net / target) * 100) : 0;
+        const avg = row.donors > 0 ? net / row.donors : 0;
+        const o = {
+          'اليوم': DOW_AR[dt.getDay()],
+          'التاريخ الميلادي': App.fmtDate(row.date),
+          'التاريخ الهجري': hijriText(dt),
+          'الهدف': target,
+          'المحقق': achieved,
+          'المتبقي': Math.max(0, target - net),
+          'خصم التبرعات': ded,
+        };
+        if (anyDed) o['صافي التبرعات'] = net;
+        o['نسبة التحقيق'] = pct + '%';
+        o['تراكمي المستهدف'] = cumTarget;
+        o['تراكمي التبرعات'] = cumAchieved;
+        o['المتبرعون'] = Number(row.donors || 0);
+        o['الجدد'] = Number(row.new_donors || 0);
+        o['معدل الفاتورة'] = Math.round(avg * 100) / 100;
+        o['ملاحظات'] = row.note || '';
+        return o;
+      });
+      const ws = window.XLSX.utils.json_to_sheet(out);
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, `${MONTHS_AR[month - 1]} ${year}`);
+      window.XLSX.writeFile(wb, `مستهدفات-${year}-${String(month).padStart(2, '0')}.xlsx`);
+      App.toast('تم تصدير الجدول.', 'ok');
+    }
+  </script>
+</body>
+</html>
