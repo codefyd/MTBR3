@@ -226,11 +226,65 @@ function toNum(v) {
 }
 function toISO(v) {
   if (v === null || v === undefined || v === '') return null;
+
+  // 1) أرقام Excel التسلسلية للتاريخ
   if (typeof v === 'number' && window.XLSX?.SSF) {
     const d = window.XLSX.SSF.parse_date_code(v);
     if (d) return new Date(Date.UTC(d.y, d.m - 1, d.d, d.H || 0, d.M || 0, Math.floor(d.S || 0))).toISOString();
   }
-  const p = new Date(String(v).trim());
+
+  let s = String(v).trim();
+  if (!s) return null;
+
+  // تطبيع الأرقام العربية والفارسية إلى لاتينية
+  s = s.replace(/[\u0660-\u0669]/g, c => String(c.charCodeAt(0) - 0x0660))
+       .replace(/[\u06F0-\u06F9]/g, c => String(c.charCodeAt(0) - 0x06F0));
+
+  // فصل التاريخ عن الوقت إن وُجد (مسافة بينهما)
+  const parts = s.split(/[ T]+/);
+  const datePart = parts[0];
+  const timePart = parts.slice(1).join(' ');
+
+  // تحليل الوقت: ساعة:دقيقة[:ثانية] مع دعم ص/م و am/pm
+  function parseTime(t) {
+    let H = 0, M = 0, S = 0;
+    if (!t) return { H, M, S };
+    const isPM = /م|pm/i.test(t);
+    const isAM = /ص|am/i.test(t);
+    const m = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+      H = +m[1]; M = +m[2]; S = m[3] ? +m[3] : 0;
+      if (isPM && H < 12) H += 12;
+      if (isAM && H === 12) H = 0;
+    }
+    return { H, M, S };
+  }
+  const { H, M, S } = parseTime(timePart);
+
+  function build(y, mo, d) {
+    if (y < 100) y += 2000;                 // سنة من خانتين => 20XX
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(Date.UTC(y, mo - 1, d, H, M, S));
+    return isNaN(dt.getTime()) ? null : dt.toISOString();
+  }
+
+  // ISO صريح: سنة-شهر-يوم
+  let m = datePart.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+  if (m) { const r = build(+m[1], +m[2], +m[3]); if (r) return r; }
+
+  // يوم/شهر/سنة (الصيغة السعودية الافتراضية) — تدعم / أو - أو .
+  m = datePart.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/);
+  if (m) {
+    let a = +m[1], b = +m[2], y = +m[3];
+    // إذا الجزء الأول > 12 فهو يوم قطعاً؛ غير ذلك نعتبره يوم/شهر (الافتراضي السعودي)
+    let r = build(y, b, a);          // يوم=a، شهر=b
+    if (r) return r;
+    r = build(y, a, b);             // احتياطي: لو الترتيب معكوس
+    if (r) return r;
+  }
+
+  // محاولة أخيرة عبر محرّك المتصفح (للصيغ الإنجليزية الصريحة)
+  const p = new Date(s);
   return isNaN(p.getTime()) ? null : p.toISOString();
 }
 // تطبيع اسم العمود حتى نقبل اختلافات Excel/CSV مثل BOM، مسافات خفية، _، -، واختلافات الهمزات
