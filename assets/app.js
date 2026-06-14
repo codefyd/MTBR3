@@ -25,6 +25,7 @@ async function guard(page) {
 // ------- الشريط الجانبي -------
 const NAV = [
   { href: 'dashboard.html', label: 'لوحة التحكم', icon: 'fa-chart-line' },
+  { href: 'reports.html', label: 'التقارير الشهرية والسنوية', icon: 'fa-chart-pie' },
   { href: 'donors.html', label: 'ملفات المتبرعين', icon: 'fa-users' },
   { href: 'operations.html', label: 'العمليات', icon: 'fa-receipt' },
   { href: 'campaigns.html', label: 'المستهدفين في الحملات', icon: 'fa-bullhorn' },
