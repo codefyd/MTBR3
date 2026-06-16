@@ -405,6 +405,46 @@ async function rebuildDonorsInBatches(onProgress, batchSize = 300) {
   return { total, processed, remaining };
 }
 
+// تحديث تزايدي: يعيد بناء ملفات المتبرعين لأرقام محددة فقط (أرقام الملف المرفوع)
+// بدل المرور على كل المتبرعين. أسرع بكثير ويتفادى timeout.
+async function rebuildDonorsForPhones(phones, onProgress, batchSize = 300) {
+  // تنظيف وتوحيد الأرقام وإزالة الفارغ والمكرر
+  const unique = Array.from(new Set(
+    (phones || []).map(p => (p == null ? '' : String(p).trim())).filter(Boolean)
+  ));
+  if (!unique.length) return { total: 0, processed: 0, remaining: 0 };
+
+  // بذر مفاتيح إعادة البناء لهذه الأرقام فقط (على دفعات لتفادي حدود حجم الطلب)
+  const SEED_BATCH = 5000;
+  for (let i = 0; i < unique.length; i += SEED_BATCH) {
+    const slice = unique.slice(i, i + SEED_BATCH);
+    const { error } = await sb.rpc('donor_rebuild_start_for_phones', { p_phones: slice });
+    if (error) throw error;
+  }
+
+  // معالجة الطابور على دفعات (نفس آلية donor_rebuild_chunk)
+  const total = unique.length;
+  let processed = 0;
+  let remaining = total;
+  if (typeof onProgress === 'function') onProgress({ total, processed, remaining });
+
+  let safety = 0;
+  while (remaining > 0 && safety < 100000) {
+    safety++;
+    const { data, error } = await sb.rpc('donor_rebuild_chunk', { p_limit: batchSize, p_cleanup: false });
+    if (error) throw error;
+    const stepProcessed = Number(data?.processed || 0);
+    remaining = Number(data?.remaining || 0);
+    processed += stepProcessed;
+    if (typeof onProgress === 'function') onProgress({ total, processed: Math.min(processed, total), remaining });
+    if (stepProcessed === 0 && remaining > 0) {
+      throw new Error('توقف احتساب ملفات المتبرعين قبل اكتمال الدفعات.');
+    }
+  }
+  if (remaining > 0) throw new Error('لم يكتمل احتساب ملفات المتبرعين بسبب تجاوز حد الأمان.');
+  return { total, processed, remaining };
+}
+
 // رفع البيانات على دفعات عبر دالة RPC في قاعدة البيانات
 async function rpcInBatches(fnName, rows, batchSize = 500) {
   let total = 0;
@@ -419,5 +459,5 @@ async function rpcInBatches(fnName, rows, batchSize = 500) {
 
 window.App = {
   sb, guard, initShell, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc,
-  cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, rebuildDonorsInBatches, PAGE_SIZE,
+  cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, rebuildDonorsInBatches, rebuildDonorsForPhones, PAGE_SIZE,
 };
