@@ -97,6 +97,7 @@
         const records = [];
         let skipped = 0;
         const phoneReport = { valid: 0, invalid: 0, empty: 0, rows: [] };
+        const filePhones = new Set(); // أرقام هذا الملف للتحديث التزايدي
         for (const row of rows) {
           const lineNo = App.toNum(App.pick(row, ['رقم']));
           const opNo = App.toNum(App.pick(row, ['#العملية', 'العملية']));
@@ -104,7 +105,7 @@
           const phoneRaw = App.pick(row, ['الجوال']);
           // تقرير محلي فقط؛ قاعدة البيانات تحفظ نفس التصنيف داخل العمليات.
           const norm = App.normalizePhone(phoneRaw, { lineNo, operationNo: opNo });
-          if (norm.status === 'صحيح') phoneReport.valid++;
+          if (norm.status === 'صحيح') { phoneReport.valid++; if (norm.phone) filePhones.add(norm.phone); }
           else if (norm.status === 'فارغ') phoneReport.empty++;
           else phoneReport.invalid++;
           if (norm.status !== 'صحيح') {
@@ -145,14 +146,15 @@
 
         App.toast(`تم حفظ/تحديث ${upserted} صف${skipped ? ` (تخطّي ${skipped})` : ''}. جارٍ تحديث ملفات المتبرعين...`, 'ok');
         try {
-          await App.rebuildDonorsInBatches(({ total, processed, remaining }) => {
+          // تحديث تزايدي: أرقام هذا الملف فقط (أسرع ويتفادى timeout)
+          await App.rebuildDonorsForPhones([...filePhones], ({ total, processed, remaining }) => {
             const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
             dz.innerHTML = `
               <div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div>
-              <div style="font-weight:700">جارٍ تحديث ملفات المتبرعين على دفعات... ${pct}%</div>
+              <div style="font-weight:700">جارٍ تحديث ملفات متبرعي هذا الملف... ${pct}%</div>
               <div class="muted">تم ${App.fmtNum(processed)} من ${App.fmtNum(total)} — المتبقي ${App.fmtNum(remaining)}</div>`;
           });
-          App.toast('تم رفع العمليات وتحديث ملفات المتبرعين بنجاح.', 'ok');
+          App.toast('تم رفع العمليات وتحديث ملفات المتبرعين المعنيين بنجاح.', 'ok');
         } catch (recalcErr) {
           App.toast(`تم رفع العمليات، لكن لم يكتمل تحديث ملفات المتبرعين: ${recalcErr.message || recalcErr}`, 'err');
         }

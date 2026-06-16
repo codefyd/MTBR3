@@ -93,6 +93,7 @@
         let skipped = 0;
         let missingPhoneColumn = 0;
         const rejected = [];
+        const filePhones = new Set(); // أرقام هذا الملف للتحديث التزايدي
 
         for (const row of rows) {
           const phoneRaw = App.pick(row, PHONE_KEYS);
@@ -116,6 +117,7 @@
             continue;
           }
 
+          if (norm.phone) filePhones.add(norm.phone);
           records.push({
             phone_raw: String(phoneRaw),
             campaign_name: campaignName || null,
@@ -132,9 +134,10 @@
 
         const shouldRecalc = localStorage.getItem(CAMPAIGN_RECALC_KEY) === '1';
         if (shouldRecalc) {
-          dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">تم الحفظ... جارٍ تحديث ملفات المتبرعين على دفعات</div>';
-          await App.rebuildDonorsInBatches(({ processed, total, remaining }) => {
-            dz.innerHTML = `<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ تحديث ملفات المتبرعين</div><div class="muted">تمت معالجة ${App.fmtNum(processed)} من ${App.fmtNum(total)} — المتبقي ${App.fmtNum(remaining)}</div>`;
+          dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">تم الحفظ... جارٍ تحديث ملفات متبرعي هذا الملف</div>';
+          // تحديث تزايدي: أرقام المستهدفين في هذا الملف فقط
+          await App.rebuildDonorsForPhones([...filePhones], ({ processed, total, remaining }) => {
+            dz.innerHTML = `<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ تحديث ملفات المتبرعين المعنيين</div><div class="muted">تمت معالجة ${App.fmtNum(processed)} من ${App.fmtNum(total)} — المتبقي ${App.fmtNum(remaining)}</div>`;
           });
         }
 
