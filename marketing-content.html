@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>المحتوى التسويقي | منصة ولاء</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div class="app-shell" id="shell"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    const DOW = ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'];
+    const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const MEDIA_LABELS = { none: 'لا شيء', image: 'صورة', video: 'فيديو', pdf: 'ملف PDF' };
+
+    let monthCursor = firstOfMonth(new Date());
+    let selectedDate = localISO(new Date());
+    let platforms = [];
+    let projects = [];
+    let contents = [];
+    let editingId = null;
+
+    (async () => {
+      const session = await App.initShell('marketing-content.html');
+      if (!session) return;
+      renderPage();
+      await loadLookups();
+      await loadMonth();
+    })();
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+    function localISO(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+    function parseISODate(s) {
+      const [y, m, d] = String(s || '').split('-').map(Number);
+      return new Date(y || new Date().getFullYear(), (m || 1) - 1, d || 1);
+    }
+    function toEnglishDigits(str) {
+      return String(str || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+    }
+    function hijriLabel(date) {
+      try {
+        return toEnglishDigits(new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', { day: 'numeric', month: 'short' }).format(date));
+      } catch (_) {
+        return '—';
+      }
+    }
+    function hijriFull(date) {
+      try {
+        return toEnglishDigits(new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).format(date));
+      } catch (_) {
+        return '—';
+      }
+    }
+    function monthTitle() {
+      const g = `${MONTHS[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
+      const h1 = hijriLabel(monthCursor);
+      const h2 = hijriLabel(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0));
+      return `${g} <span class="muted" style="font-size:.9rem;font-weight:400">${h1} - ${h2}</span>`;
+    }
+    function getPlatform(id) { return platforms.find(p => p.id === id) || null; }
+    function getProject(id) { return projects.find(p => p.id === id) || null; }
+
+    function renderPage() {
+      document.getElementById('mainArea').innerHTML = `
+        <div class="topbar">
+          <h1><i class="fa-solid fa-calendar-days text-gold"></i> المحتوى التسويقي</h1>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button class="btn-x btn-ghost btn-sm" id="todayBtn"><i class="fa-regular fa-calendar-check"></i> اليوم</button>
+            <button class="btn-x btn-sm" id="newContentBtn"><i class="fa-solid fa-plus"></i> إضافة محتوى</button>
+          </div>
+        </div>
+        <div class="content">
+          <div class="marketing-layout">
+            <div class="panel fade-in marketing-calendar-panel">
+              <div class="panel-head">
+                <div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap">
+                  <button class="btn-x btn-ghost btn-sm" id="prevMonth"><i class="fa-solid fa-chevron-right"></i></button>
+                  <h2 id="monthTitle" style="min-width:220px;text-align:center;margin:0"></h2>
+                  <button class="btn-x btn-ghost btn-sm" id="nextMonth"><i class="fa-solid fa-chevron-left"></i></button>
+                </div>
+                <div class="platform-legend" id="platformLegend"></div>
+              </div>
+              <div class="panel-body">
+                <div class="marketing-calendar" id="calendarArea"></div>
+              </div>
+            </div>
+
+            <div class="panel fade-in marketing-side-panel">
+              <div class="panel-head">
+                <h2><i class="fa-solid fa-pen-nib"></i> محتوى اليوم</h2>
+                <span class="badge-x badge-cat" id="selectedLabel"></span>
+              </div>
+              <div class="panel-body">
+                <form id="contentForm" class="marketing-form">
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <label class="lbl">المنصة</label>
+                      <select class="field" id="platformId" required></select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="lbl">الوسائط</label>
+                      <select class="field" id="mediaType">
+                        <option value="none">لا شيء</option>
+                        <option value="image">صورة</option>
+                        <option value="video">فيديو</option>
+                        <option value="pdf">ملف PDF</option>
+                      </select>
+                    </div>
+                    <div class="col-12">
+                      <label class="lbl">النص</label>
+                      <textarea class="field" id="contentText" rows="5" placeholder="اكتب نص المحتوى التسويقي هنا..."></textarea>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="lbl">كود الإحالة</label>
+                      <input class="field" id="referralCode" placeholder="مثال: WA-RMD-01" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="lbl">المشروع</label>
+                      <select class="field" id="projectId"></select>
+                    </div>
+                    <div class="col-12">
+                      <label class="lbl">الرابط الناتج</label>
+                      <div style="display:flex;gap:.5rem">
+                        <input class="field" id="finalUrl" dir="ltr" readonly style="text-align:left" />
+                        <button class="btn-x btn-ghost btn-sm" type="button" id="copyUrl" title="نسخ الرابط"><i class="fa-regular fa-copy"></i></button>
+                      </div>
+                      <div class="muted" style="font-size:.82rem;margin-top:.25rem">الرابط يُبنى من رابط المشروع، ثم يُضاف كود الإحالة في النهاية. ويمكن استخدام {code} داخل رابط المشروع لاستبداله مباشرة.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="lbl">الوقت</label>
+                      <input type="time" class="field" id="targetTime" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="lbl">الجمهور المستهدف</label>
+                      <input class="field" id="targetAudience" placeholder="مثال: المتبرعون الخاملون" />
+                    </div>
+                    <div class="col-12">
+                      <div style="display:flex;gap:.65rem;flex-wrap:wrap">
+                        <button class="btn-x" type="submit" id="saveContentBtn"><i class="fa-solid fa-floppy-disk"></i> حفظ</button>
+                        <button class="btn-x btn-ghost" type="button" id="resetFormBtn"><i class="fa-solid fa-rotate-right"></i> تفريغ</button>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+
+                <hr style="border-color:var(--c-line);margin:1.25rem 0" />
+                <div id="dayList"></div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+      document.getElementById('prevMonth').addEventListener('click', () => changeMonth(-1));
+      document.getElementById('nextMonth').addEventListener('click', () => changeMonth(1));
+      document.getElementById('todayBtn').addEventListener('click', async () => {
+        const today = new Date();
+        monthCursor = firstOfMonth(today);
+        selectedDate = localISO(today);
+        await loadMonth();
+      });
+      document.getElementById('newContentBtn').addEventListener('click', resetForm);
+      document.getElementById('contentForm').addEventListener('submit', saveContent);
+      document.getElementById('resetFormBtn').addEventListener('click', resetForm);
+      document.getElementById('projectId').addEventListener('change', updateFinalUrl);
+      document.getElementById('referralCode').addEventListener('input', updateFinalUrl);
+      document.getElementById('copyUrl').addEventListener('click', copyFinalUrl);
+    }
+
+    async function loadLookups() {
+      try {
+        const [p1, p2] = await Promise.all([
+          App.sb.from('marketing_platforms').select('*').order('name'),
+          App.sb.from('marketing_projects').select('*').order('name'),
+        ]);
+        if (p1.error) throw p1.error;
+        if (p2.error) throw p2.error;
+        platforms = p1.data || [];
+        projects = p2.data || [];
+      } catch (e) {
+        App.toast('لم يتم العثور على جداول المحتوى التسويقي. شغّل ملف SQL المرفق أولًا.', 'err');
+        platforms = [];
+        projects = [];
+      }
+      renderLookups();
+    }
+
+    function renderLookups() {
+      const platformSel = document.getElementById('platformId');
+      const projectSel = document.getElementById('projectId');
+      const activePlatforms = platforms.filter(p => p.is_active !== false);
+      const activeProjects = projects.filter(p => p.is_active !== false);
+      platformSel.innerHTML = activePlatforms.length
+        ? activePlatforms.map(p => `<option value="${p.id}">${App.esc(p.name)}</option>`).join('')
+        : '<option value="">أضف منصة من الإعدادات</option>';
+      projectSel.innerHTML = '<option value="">بدون مشروع</option>' + activeProjects.map(p => `<option value="${p.id}">${App.esc(p.name)}</option>`).join('');
+      document.getElementById('platformLegend').innerHTML = activePlatforms.map(p => `
+        <span class="legend-item"><span class="legend-dot" style="background:${safeColor(p.color)}"></span>${App.esc(p.name)}</span>`).join('');
+      updateFinalUrl();
+    }
+
+    async function loadMonth() {
+      document.getElementById('monthTitle').innerHTML = monthTitle();
+      const start = localISO(monthCursor);
+      const next = localISO(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1));
+      const { data, error } = await App.sb.from('marketing_contents')
+        .select('*')
+        .gte('content_date', start)
+        .lt('content_date', next)
+        .order('content_date', { ascending: true })
+        .order('target_time', { ascending: true, nullsFirst: false });
+      if (error) {
+        contents = [];
+        document.getElementById('calendarArea').innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`;
+        renderSelectedDay();
+        return;
+      }
+      contents = data || [];
+      renderCalendar();
+      renderSelectedDay();
+    }
+
+    async function changeMonth(step) {
+      monthCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + step, 1);
+      selectedDate = localISO(monthCursor);
+      resetForm(true);
+      await loadMonth();
+    }
+
+    function renderCalendar() {
+      const first = monthCursor;
+      const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+      const startOffset = (first.getDay() + 1) % 7; // بداية الأسبوع: السبت
+      const cells = [];
+      for (let i = 0; i < startOffset; i++) cells.push('<div class="calendar-cell muted-cell"></div>');
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dt = new Date(first.getFullYear(), first.getMonth(), day);
+        const key = localISO(dt);
+        const dayItems = contents.filter(c => c.content_date === key);
+        const isSelected = key === selectedDate;
+        const isToday = key === localISO(new Date());
+        const chips = dayItems.slice(0, 3).map(item => {
+          const p = getPlatform(item.platform_id);
+          return `<span class="campaign-chip" style="--chip:${safeColor(p?.color)}"><i class="fa-solid fa-circle"></i>${App.esc(p?.name || 'منصة')}</span>`;
+        }).join('') + (dayItems.length > 3 ? `<span class="campaign-more">+${dayItems.length - 3}</span>` : '');
+        cells.push(`
+          <button class="calendar-cell ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''}" data-date="${key}">
+            <div class="cal-date-row"><span class="greg-day">${day}</span><span class="hijri-day">${hijriLabel(dt)}</span></div>
+            <div class="campaign-chips">${chips}</div>
+          </button>`);
+      }
+      document.getElementById('calendarArea').innerHTML = `
+        <div class="calendar-weekdays">${DOW.map(d => `<div>${d}</div>`).join('')}</div>
+        <div class="calendar-grid">${cells.join('')}</div>`;
+      document.querySelectorAll('.calendar-cell[data-date]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedDate = btn.dataset.date;
+          editingId = null;
+          renderCalendar();
+          renderSelectedDay();
+          resetForm(false);
+        });
+      });
+    }
+
+    function renderSelectedDay() {
+      const d = parseISODate(selectedDate);
+      document.getElementById('selectedLabel').textContent = `${selectedDate} | ${hijriFull(d)}`;
+      const items = contents.filter(c => c.content_date === selectedDate);
+      const area = document.getElementById('dayList');
+      if (!items.length) {
+        area.innerHTML = '<div class="empty-state" style="padding:1rem"><i class="fa-regular fa-calendar-plus"></i>لا يوجد محتوى محفوظ لهذا اليوم.</div>';
+        return;
+      }
+      area.innerHTML = `
+        <div style="font-weight:700;margin-bottom:.65rem"><i class="fa-solid fa-list-check text-gold"></i> حملات هذا اليوم</div>
+        <div class="day-campaigns">
+          ${items.map(itemCard).join('')}
+        </div>`;
+      area.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => editContent(btn.dataset.edit)));
+      area.querySelectorAll('[data-delete]').forEach(btn => btn.addEventListener('click', () => deleteContent(btn.dataset.delete)));
+    }
+
+    function itemCard(item) {
+      const p = getPlatform(item.platform_id);
+      const pr = getProject(item.project_id);
+      return `
+        <div class="day-campaign-card" style="--chip:${safeColor(p?.color)}">
+          <div class="day-campaign-main">
+            <span class="platform-pill"><span></span>${App.esc(p?.name || 'منصة')}</span>
+            <strong>${App.esc(pr?.name || 'بدون مشروع')}</strong>
+            <span class="muted">${item.target_time ? App.esc(String(item.target_time).slice(0, 5)) : 'بدون وقت'}</span>
+          </div>
+          <div class="muted" style="font-size:.9rem;margin-top:.35rem">${MEDIA_LABELS[item.media_type] || 'لا شيء'} — ${App.esc(item.target_audience || 'جمهور غير محدد')}</div>
+          ${item.content_text ? `<div class="campaign-text-preview">${App.esc(item.content_text)}</div>` : ''}
+          ${item.final_url ? `<div class="campaign-url" dir="ltr">${App.esc(item.final_url)}</div>` : ''}
+          <div style="display:flex;gap:.45rem;margin-top:.65rem;flex-wrap:wrap">
+            <button class="btn-x btn-ghost btn-sm" data-edit="${item.id}"><i class="fa-solid fa-pen"></i> تعديل</button>
+            <button class="btn-x btn-danger btn-sm" data-delete="${item.id}"><i class="fa-solid fa-trash"></i> حذف</button>
+          </div>
+        </div>`;
+    }
+
+    function buildFinalUrl(baseUrl, code) {
+      const base = String(baseUrl || '').trim();
+      const ref = String(code || '').trim();
+      if (!base) return '';
+      if (!ref) return base;
+      const enc = encodeURIComponent(ref);
+      if (base.includes('{code}')) return base.replaceAll('{code}', enc);
+      if (/[=\/]$/.test(base)) return base + enc;
+      return base.replace(/\/+$/, '') + '/' + enc;
+    }
+
+    function updateFinalUrl() {
+      const project = getProject(document.getElementById('projectId')?.value);
+      const code = document.getElementById('referralCode')?.value || '';
+      const finalUrl = buildFinalUrl(project?.base_url, code);
+      const field = document.getElementById('finalUrl');
+      if (field) field.value = finalUrl;
+    }
+
+    async function copyFinalUrl() {
+      const url = document.getElementById('finalUrl').value;
+      if (!url) return App.toast('لا يوجد رابط لنسخه.', 'info');
+      try {
+        await navigator.clipboard.writeText(url);
+        App.toast('تم نسخ الرابط.', 'ok');
+      } catch (_) {
+        App.toast('تعذر النسخ من المتصفح.', 'err');
+      }
+    }
+
+    async function saveContent(e) {
+      e.preventDefault();
+      const btn = document.getElementById('saveContentBtn');
+      const platformId = document.getElementById('platformId').value || null;
+      if (!platformId) return App.toast('أضف منصة من الإعدادات أولًا.', 'err');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-x"></span> جارٍ الحفظ...';
+      const payload = {
+        content_date: selectedDate,
+        platform_id: platformId,
+        media_type: document.getElementById('mediaType').value || 'none',
+        content_text: document.getElementById('contentText').value.trim() || null,
+        referral_code: document.getElementById('referralCode').value.trim() || null,
+        project_id: document.getElementById('projectId').value || null,
+        final_url: document.getElementById('finalUrl').value.trim() || null,
+        target_time: document.getElementById('targetTime').value || null,
+        target_audience: document.getElementById('targetAudience').value.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        const q = editingId
+          ? App.sb.from('marketing_contents').update(payload).eq('id', editingId)
+          : App.sb.from('marketing_contents').insert(payload);
+        const { error } = await q;
+        if (error) throw error;
+        App.toast(editingId ? 'تم تحديث المحتوى.' : 'تم حفظ المحتوى.', 'ok');
+        resetForm(true);
+        await loadMonth();
+      } catch (err) {
+        App.toast(err.message || 'فشل حفظ المحتوى', 'err');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> حفظ';
+      }
+    }
+
+    function editContent(id) {
+      const item = contents.find(c => c.id === id);
+      if (!item) return;
+      editingId = id;
+      selectedDate = item.content_date;
+      document.getElementById('platformId').value = item.platform_id || '';
+      document.getElementById('mediaType').value = item.media_type || 'none';
+      document.getElementById('contentText').value = item.content_text || '';
+      document.getElementById('referralCode').value = item.referral_code || '';
+      document.getElementById('projectId').value = item.project_id || '';
+      document.getElementById('targetTime').value = item.target_time ? String(item.target_time).slice(0, 5) : '';
+      document.getElementById('targetAudience').value = item.target_audience || '';
+      updateFinalUrl();
+      document.getElementById('saveContentBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> تحديث';
+      renderCalendar();
+      renderSelectedDay();
+      document.getElementById('contentText').focus();
+    }
+
+    async function deleteContent(id) {
+      if (!confirm('حذف هذا المحتوى التسويقي؟')) return;
+      const { error } = await App.sb.from('marketing_contents').delete().eq('id', id);
+      if (error) return App.toast(error.message || 'فشل الحذف', 'err');
+      App.toast('تم حذف المحتوى.', 'ok');
+      await loadMonth();
+    }
+
+    function resetForm(clearEditing = true) {
+      if (clearEditing) editingId = null;
+      document.getElementById('contentForm')?.reset();
+      if (platforms.filter(p => p.is_active !== false)[0]) document.getElementById('platformId').value = platforms.filter(p => p.is_active !== false)[0].id;
+      document.getElementById('mediaType').value = 'none';
+      document.getElementById('saveContentBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> حفظ';
+      updateFinalUrl();
+    }
+
+    function safeColor(c) {
+      const v = String(c || '').trim();
+      return /^#[0-9a-fA-F]{6}$/.test(v) ? v : '#0f5e54';
+    }
+  </script>
+</body>
+</html>

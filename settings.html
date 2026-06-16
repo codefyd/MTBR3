@@ -18,6 +18,8 @@
     let inactiveDays = 90;
     let responseDays = 30;
     let cats = [];
+    let marketingPlatforms = [];
+    let marketingProjects = [];
 
     (async () => {
       const session = await App.initShell('settings.html');
@@ -28,14 +30,31 @@
         responseDays = (data.response_days ?? 30);
         cats = data.categories || [];
       }
+      await loadMarketingSettings();
       renderPage();
     })();
+
+    async function loadMarketingSettings() {
+      try {
+        const [platformRes, projectRes] = await Promise.all([
+          App.sb.from('marketing_platforms').select('*').order('name'),
+          App.sb.from('marketing_projects').select('*').order('name'),
+        ]);
+        if (platformRes.error) throw platformRes.error;
+        if (projectRes.error) throw projectRes.error;
+        marketingPlatforms = platformRes.data || [];
+        marketingProjects = projectRes.data || [];
+      } catch (e) {
+        marketingPlatforms = [{ id: null, name: 'واتس اب', color: '#25D366', is_active: true, _new: true }];
+        marketingProjects = [];
+      }
+    }
 
     function renderPage() {
       document.getElementById('mainArea').innerHTML = `
         <div class="topbar"><h1><i class="fa-solid fa-gear text-gold"></i> الإعدادات</h1></div>
         <div class="content">
-          <div class="row g-4" style="max-width:900px">
+          <div class="row g-4" style="max-width:1100px">
             <div class="col-12">
               <div class="panel fade-in">
                 <div class="panel-head"><h2><i class="fa-solid fa-hourglass-half"></i> مدة الخمول</h2></div>
@@ -77,21 +96,66 @@
                 </div>
               </div>
             </div>
+
             <div class="col-12">
               <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap">
-                <button class="btn-x" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> حفظ الإعدادات</button>
+                <button class="btn-x" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> حفظ إعدادات المتبرعين</button>
                 <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
-                  <input type="checkbox" id="recalcAfter" checked />
+                  <input type="checkbox" id="recalcAfter" />
                   <span>إعادة احتساب ملفات المتبرعين بعد الحفظ</span>
                 </label>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="panel fade-in">
+                <div class="panel-head">
+                  <h2><i class="fa-solid fa-share-nodes"></i> منصات المحتوى التسويقي</h2>
+                  <button class="btn-x btn-ghost btn-sm" id="addPlatform"><i class="fa-solid fa-plus"></i> إضافة منصة</button>
+                </div>
+                <div class="panel-body">
+                  <p class="muted" style="margin-top:0">هذه المنصات تظهر في تبويب <strong>المحتوى التسويقي</strong>، ولكل منصة لون يميزها داخل التقويم.</p>
+                  <div class="table-wrap">
+                    <table class="data settings-table" style="white-space:normal">
+                      <thead><tr><th>اسم المنصة</th><th>اللون</th><th>مفعّلة</th><th></th></tr></thead>
+                      <tbody id="platformBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="panel fade-in">
+                <div class="panel-head">
+                  <h2><i class="fa-solid fa-link"></i> مشاريع المحتوى التسويقي وروابطها</h2>
+                  <button class="btn-x btn-ghost btn-sm" id="addProject"><i class="fa-solid fa-plus"></i> إضافة مشروع</button>
+                </div>
+                <div class="panel-body">
+                  <p class="muted" style="margin-top:0">أضف اسم المشروع ورابطه الأساسي. عند إضافة محتوى، يُضاف كود الإحالة في نهاية الرابط. ويمكن كتابة <strong>{code}</strong> داخل الرابط لاستبداله بالكود مباشرة.</p>
+                  <div class="table-wrap">
+                    <table class="data settings-table" style="white-space:normal">
+                      <thead><tr><th>اسم المشروع</th><th>رابط المشروع</th><th>مفعّل</th><th></th></tr></thead>
+                      <tbody id="projectBody"></tbody>
+                    </table>
+                  </div>
+                  <div style="margin-top:1rem">
+                    <button class="btn-x" id="saveMarketingBtn"><i class="fa-solid fa-floppy-disk"></i> حفظ المنصات والمشاريع</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>`;
 
       renderCats();
+      renderPlatforms();
+      renderProjects();
       document.getElementById('addCat').addEventListener('click', () => { cats.push({ name:'فئة جديدة', min:1, max:null }); renderCats(); });
       document.getElementById('saveBtn').addEventListener('click', save);
+      document.getElementById('addPlatform').addEventListener('click', () => { marketingPlatforms.push({ id:null, name:'منصة جديدة', color:'#0f5e54', is_active:true, _new:true }); renderPlatforms(); });
+      document.getElementById('addProject').addEventListener('click', () => { marketingProjects.push({ id:null, name:'مشروع جديد', base_url:'', is_active:true, _new:true }); renderProjects(); });
+      document.getElementById('saveMarketingBtn').addEventListener('click', saveMarketingSettings);
     }
 
     function renderCats() {
@@ -118,6 +182,135 @@
       });
     }
 
+    function renderPlatforms() {
+      const body = document.getElementById('platformBody');
+      body.innerHTML = marketingPlatforms.map((p, i) => `
+        <tr>
+          <td><input class="field" data-platform-i="${i}" data-k="name" value="${App.esc(p.name || '')}" /></td>
+          <td style="max-width:190px">
+            <div style="display:flex;gap:.5rem;align-items:center">
+              <input type="color" class="field color-field" data-platform-i="${i}" data-k="color" value="${safeColor(p.color)}" />
+              <input class="field" data-platform-i="${i}" data-k="color" value="${App.esc(safeColor(p.color))}" dir="ltr" style="text-align:left" />
+            </div>
+          </td>
+          <td><input type="checkbox" data-platform-i="${i}" data-k="is_active" ${p.is_active !== false ? 'checked' : ''} /></td>
+          <td><button class="btn-x btn-sm btn-danger" data-del-platform="${i}"><i class="fa-solid fa-trash"></i></button></td>
+        </tr>`).join('');
+      body.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('input', platformInputHandler);
+        inp.addEventListener('change', platformInputHandler);
+      });
+      body.querySelectorAll('[data-del-platform]').forEach(btn => {
+        btn.addEventListener('click', () => removePlatform(+btn.dataset.delPlatform));
+      });
+    }
+
+    function platformInputHandler(e) {
+      const i = +e.target.dataset.platformI;
+      const k = e.target.dataset.k;
+      if (k === 'is_active') marketingPlatforms[i][k] = e.target.checked;
+      else marketingPlatforms[i][k] = e.target.value;
+    }
+
+    function renderProjects() {
+      const body = document.getElementById('projectBody');
+      body.innerHTML = marketingProjects.map((p, i) => `
+        <tr>
+          <td><input class="field" data-project-i="${i}" data-k="name" value="${App.esc(p.name || '')}" /></td>
+          <td><input class="field" data-project-i="${i}" data-k="base_url" value="${App.esc(p.base_url || '')}" dir="ltr" style="text-align:left" placeholder="https://example.com/project/{code}" /></td>
+          <td><input type="checkbox" data-project-i="${i}" data-k="is_active" ${p.is_active !== false ? 'checked' : ''} /></td>
+          <td><button class="btn-x btn-sm btn-danger" data-del-project="${i}"><i class="fa-solid fa-trash"></i></button></td>
+        </tr>`).join('');
+      body.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('input', projectInputHandler);
+        inp.addEventListener('change', projectInputHandler);
+      });
+      body.querySelectorAll('[data-del-project]').forEach(btn => {
+        btn.addEventListener('click', () => removeProject(+btn.dataset.delProject));
+      });
+    }
+
+    function projectInputHandler(e) {
+      const i = +e.target.dataset.projectI;
+      const k = e.target.dataset.k;
+      marketingProjects[i][k] = k === 'is_active' ? e.target.checked : e.target.value;
+    }
+
+    async function removePlatform(i) {
+      const row = marketingPlatforms[i];
+      if (!row) return;
+      if (row.id && !confirm('حذف المنصة؟ المحتوى السابق سيبقى بدون منصة محددة.')) return;
+      if (row.id) {
+        const { error } = await App.sb.from('marketing_platforms').delete().eq('id', row.id);
+        if (error) return App.toast(error.message || 'فشل حذف المنصة', 'err');
+      }
+      marketingPlatforms.splice(i, 1);
+      renderPlatforms();
+    }
+
+    async function removeProject(i) {
+      const row = marketingProjects[i];
+      if (!row) return;
+      if (row.id && !confirm('حذف المشروع؟ المحتوى السابق سيبقى بدون مشروع محدد.')) return;
+      if (row.id) {
+        const { error } = await App.sb.from('marketing_projects').delete().eq('id', row.id);
+        if (error) return App.toast(error.message || 'فشل حذف المشروع', 'err');
+      }
+      marketingProjects.splice(i, 1);
+      renderProjects();
+    }
+
+    async function saveMarketingSettings() {
+      const btn = document.getElementById('saveMarketingBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-x"></span> جارٍ الحفظ...';
+      try {
+        const platformRows = marketingPlatforms
+          .map(p => ({ id:p.id, name:String(p.name || '').trim(), color:safeColor(p.color), is_active:p.is_active !== false }))
+          .filter(p => p.name);
+        const projectRows = marketingProjects
+          .map(p => ({ id:p.id, name:String(p.name || '').trim(), base_url:String(p.base_url || '').trim(), is_active:p.is_active !== false }))
+          .filter(p => p.name);
+
+        const oldPlatforms = platformRows.filter(p => p.id);
+        const newPlatforms = platformRows.filter(p => !p.id).map(({ id, ...rest }) => rest);
+        const oldProjects = projectRows.filter(p => p.id);
+        const newProjects = projectRows.filter(p => !p.id).map(({ id, ...rest }) => rest);
+
+        if (oldPlatforms.length) {
+          const { error } = await App.sb.from('marketing_platforms').upsert(oldPlatforms);
+          if (error) throw error;
+        }
+        if (newPlatforms.length) {
+          const { error } = await App.sb.from('marketing_platforms').insert(newPlatforms);
+          if (error) throw error;
+        }
+        if (oldProjects.length) {
+          const { error } = await App.sb.from('marketing_projects').upsert(oldProjects);
+          if (error) throw error;
+        }
+        if (newProjects.length) {
+          const { error } = await App.sb.from('marketing_projects').insert(newProjects);
+          if (error) throw error;
+        }
+
+        await loadMarketingSettings();
+        renderPlatforms();
+        renderProjects();
+        App.toast('تم حفظ منصات ومشاريع المحتوى التسويقي.', 'ok');
+      } catch (e) {
+        App.toast(e.message || 'فشل حفظ إعدادات المحتوى التسويقي. تأكد من تشغيل ملف SQL.', 'err');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> حفظ المنصات والمشاريع';
+      }
+    }
+
+    function safeColor(c) {
+      const v = String(c || '').trim();
+      return /^#[0-9a-fA-F]{6}$/.test(v) ? v : '#0f5e54';
+    }
+
     async function save() {
       const btn = document.getElementById('saveBtn');
       const days = Number(document.getElementById('inactiveDays').value) || 90;
@@ -131,8 +324,7 @@
         });
         if (error) throw error;
         if (recalcAfter) {
-          // إعادة الاحتساب على دفعات قصيرة لتفادي انقطاع التحديث (timeout)
-          await App.rebuildDonorsInBatches(({ processed, total, remaining }) => {
+          await App.rebuildDonorsInBatches(({ processed, total }) => {
             const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
             btn.innerHTML = `<span class="spinner-x"></span> إعادة الاحتساب... ${pct}%`;
           });
@@ -144,7 +336,7 @@
         App.toast(e.message || 'فشل الحفظ', 'err');
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> حفظ الإعدادات';
+        btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> حفظ إعدادات المتبرعين';
       }
     }
   </script>

@@ -30,6 +30,7 @@ const NAV = [
   { href: 'donors.html', label: 'ملفات المتبرعين', icon: 'fa-users' },
   { href: 'operations.html', label: 'العمليات', icon: 'fa-receipt' },
   { href: 'campaigns.html', label: 'المستهدفين في الحملات', icon: 'fa-bullhorn' },
+  { href: 'marketing-content.html', label: 'المحتوى التسويقي', icon: 'fa-calendar-days' },
   { href: 'settings.html', label: 'الإعدادات', icon: 'fa-gear' },
 ];
 

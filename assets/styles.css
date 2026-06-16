@@ -338,3 +338,86 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
 .highlight-box .hb-label i { color: var(--c-gold); }
 .highlight-box .hb-value { font-size: 1.9rem; font-weight: 700; margin-top: .4rem; }
 .highlight-box .hb-sub { color: #cfe0dd; font-size: .85rem; margin-top: .25rem; }
+
+/* ===== تبويب المحتوى التسويقي ===== */
+.marketing-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(360px, .9fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.marketing-calendar-panel,
+.marketing-side-panel { min-width: 0; }
+.platform-legend { display: flex; flex-wrap: wrap; gap: .45rem .7rem; align-items: center; }
+.legend-item { display: inline-flex; align-items: center; gap: .35rem; color: var(--c-ink-soft); font-size: .88rem; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.calendar-weekdays,
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .45rem; }
+.calendar-weekdays { margin-bottom: .45rem; }
+.calendar-weekdays > div {
+  text-align: center; font-weight: 700; color: var(--c-primary-dk);
+  background: var(--c-primary-lt); border-radius: 10px; padding: .45rem .25rem; font-size: .9rem;
+}
+.calendar-cell {
+  min-height: 118px; border: 1px solid var(--c-line); border-radius: 14px;
+  background: var(--c-surface); color: var(--c-ink); padding: .55rem;
+  text-align: start; cursor: pointer; display: flex; flex-direction: column; gap: .45rem;
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+  font-family: inherit; width: 100%;
+}
+.calendar-cell:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--c-primary); }
+.calendar-cell.selected { border-color: var(--c-gold); box-shadow: 0 0 0 3px var(--c-gold-lt); }
+.calendar-cell.today { background: linear-gradient(180deg, var(--c-gold-lt), var(--c-surface)); }
+.calendar-cell.muted-cell { background: rgba(255,255,255,.35); cursor: default; border-style: dashed; }
+.calendar-cell.muted-cell:hover { transform: none; box-shadow: none; border-color: var(--c-line); }
+.cal-date-row { display: flex; align-items: flex-start; justify-content: space-between; gap: .4rem; }
+.greg-day { font-weight: 700; font-size: 1.2rem; color: var(--c-primary-dk); line-height: 1; }
+.hijri-day { color: var(--c-ink-soft); font-size: .78rem; text-align: end; line-height: 1.25; }
+.campaign-chips { display: flex; flex-direction: column; gap: .25rem; margin-top: auto; }
+.campaign-chip {
+  display: inline-flex; align-items: center; gap: .3rem; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: color-mix(in srgb, var(--chip, var(--c-primary)) 13%, white);
+  color: var(--c-ink); border: 1px solid color-mix(in srgb, var(--chip, var(--c-primary)) 30%, transparent);
+  border-radius: 999px; padding: .18rem .5rem; font-size: .76rem; font-weight: 700;
+}
+.campaign-chip i { color: var(--chip, var(--c-primary)); font-size: .48rem; }
+.campaign-more { color: var(--c-ink-soft); font-size: .76rem; padding-inline-start: .3rem; }
+.marketing-form textarea.field { resize: vertical; min-height: 120px; }
+.day-campaigns { display: grid; gap: .75rem; }
+.day-campaign-card {
+  border: 1px solid var(--c-line); border-inline-start: 4px solid var(--chip, var(--c-primary));
+  border-radius: 14px; padding: .85rem; background: var(--c-surface); box-shadow: var(--shadow-sm);
+}
+.day-campaign-main { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.platform-pill {
+  display: inline-flex; align-items: center; gap: .35rem; padding: .16rem .55rem;
+  border-radius: 999px; background: color-mix(in srgb, var(--chip, var(--c-primary)) 13%, white);
+  border: 1px solid color-mix(in srgb, var(--chip, var(--c-primary)) 30%, transparent);
+  font-size: .82rem; font-weight: 700;
+}
+.platform-pill span { width: 9px; height: 9px; border-radius: 50%; background: var(--chip, var(--c-primary)); display: inline-block; }
+.campaign-text-preview {
+  margin-top: .55rem; white-space: pre-wrap; color: var(--c-ink);
+  background: var(--c-bg); border-radius: 10px; padding: .55rem .65rem; font-size: .9rem;
+  max-height: 140px; overflow: auto;
+}
+.campaign-url {
+  margin-top: .5rem; direction: ltr; text-align: left; color: var(--c-primary-dk);
+  background: var(--c-primary-lt); border-radius: 8px; padding: .4rem .55rem; font-size: .82rem;
+  overflow-wrap: anywhere;
+}
+.color-field { max-width: 58px; padding: .25rem; height: 42px; }
+.settings-table td { vertical-align: middle; }
+
+@media (max-width: 1180px) {
+  .marketing-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .calendar-weekdays,
+  .calendar-grid { gap: .3rem; }
+  .calendar-cell { min-height: 92px; padding: .4rem; border-radius: 10px; }
+  .greg-day { font-size: 1rem; }
+  .hijri-day { font-size: .68rem; }
+  .campaign-chip { font-size: .68rem; padding: .12rem .38rem; }
+}
