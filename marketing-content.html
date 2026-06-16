@@ -20,7 +20,7 @@
     const MEDIA_LABELS = { none: 'لا شيء', image: 'صورة', video: 'فيديو', pdf: 'ملف PDF' };
 
     let monthCursor = firstOfMonth(new Date());
-    let selectedDate = localISO(new Date());
+    let selectedDate = null;
     let platforms = [];
     let projects = [];
     let contents = [];
@@ -77,6 +77,11 @@
           </div>
         </div>
         <div class="content">
+          <div class="marketing-stats" id="marketingStats">
+            <div class="mini-stat-card"><span>محتوى مجهز</span><strong id="statPrepared">0</strong></div>
+            <div class="mini-stat-card"><span>حملات الشهر</span><strong id="statCampaigns">0</strong></div>
+            <div class="mini-stat-card"><span>تقارير PDF</span><strong id="statReports">0</strong></div>
+          </div>
           <div class="marketing-layout">
             <div class="panel fade-in marketing-calendar-panel">
               <div class="panel-head">
@@ -98,6 +103,10 @@
                 <span class="badge-x badge-cat" id="selectedLabel"></span>
               </div>
               <div class="panel-body">
+                <div id="dayList"></div>
+                <div id="contentFormWrap" style="display:none">
+                  <hr style="border-color:var(--c-line);margin:1.25rem 0" />
+                  <div style="font-weight:700;margin-bottom:.65rem"><i class="fa-solid fa-plus text-gold"></i> محتوى اليوم</div>
                 <form id="contentForm" class="marketing-form">
                   <div class="row g-3">
                     <div class="col-12 col-md-6">
@@ -149,9 +158,7 @@
                     </div>
                   </div>
                 </form>
-
-                <hr style="border-color:var(--c-line);margin:1.25rem 0" />
-                <div id="dayList"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -165,7 +172,17 @@
         selectedDate = localISO(today);
         await loadMonth();
       });
-      document.getElementById('newContentBtn').addEventListener('click', resetForm);
+      document.getElementById('newContentBtn').addEventListener('click', () => {
+        if (!selectedDate) {
+          const today = new Date();
+          monthCursor = firstOfMonth(today);
+          selectedDate = localISO(today);
+          loadMonth();
+        } else {
+          resetForm(true);
+          document.getElementById('contentFormWrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
       document.getElementById('contentForm').addEventListener('submit', saveContent);
       document.getElementById('resetFormBtn').addEventListener('click', resetForm);
       document.getElementById('projectId').addEventListener('change', updateFinalUrl);
@@ -217,20 +234,33 @@
         .order('target_time', { ascending: true, nullsFirst: false });
       if (error) {
         contents = [];
+        renderStats();
         document.getElementById('calendarArea').innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`;
         renderSelectedDay();
         return;
       }
       contents = data || [];
+      renderStats();
       renderCalendar();
       renderSelectedDay();
     }
 
     async function changeMonth(step) {
       monthCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + step, 1);
-      selectedDate = localISO(monthCursor);
+      selectedDate = null;
       resetForm(true);
       await loadMonth();
+    }
+
+
+    function renderStats() {
+      const prepared = contents.length;
+      const campaigns = new Set(contents.map(c => `${c.content_date || ''}|${c.platform_id || ''}`).filter(Boolean)).size;
+      const reports = contents.filter(c => c.media_type === 'pdf').length;
+      const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
+      set('statPrepared', prepared);
+      set('statCampaigns', campaigns);
+      set('statReports', reports);
     }
 
     function renderCalendar() {
@@ -256,8 +286,10 @@
           </button>`);
       }
       document.getElementById('calendarArea').innerHTML = `
-        <div class="calendar-weekdays">${DOW.map(d => `<div>${d}</div>`).join('')}</div>
-        <div class="calendar-grid">${cells.join('')}</div>`;
+        <div class="calendar-inner">
+          <div class="calendar-weekdays">${DOW.map(d => `<div>${d}</div>`).join('')}</div>
+          <div class="calendar-grid">${cells.join('')}</div>
+        </div>`;
       document.querySelectorAll('.calendar-cell[data-date]').forEach(btn => {
         btn.addEventListener('click', () => {
           selectedDate = btn.dataset.date;
@@ -270,12 +302,22 @@
     }
 
     function renderSelectedDay() {
-      const d = parseISODate(selectedDate);
-      document.getElementById('selectedLabel').textContent = `${selectedDate} | ${hijriFull(d)}`;
-      const items = contents.filter(c => c.content_date === selectedDate);
+      const label = document.getElementById('selectedLabel');
       const area = document.getElementById('dayList');
+      const formWrap = document.getElementById('contentFormWrap');
+      if (!selectedDate) {
+        if (label) label.textContent = 'اختر يومًا من التقويم';
+        if (formWrap) formWrap.style.display = 'none';
+        if (area) area.innerHTML = '<div class="empty-state" style="padding:1rem"><i class="fa-regular fa-hand-pointer"></i> اختر يومًا من التقويم لعرض حملاته وإضافة محتوى جديد.</div>';
+        return;
+      }
+      const d = parseISODate(selectedDate);
+      if (label) label.textContent = `${selectedDate} | ${hijriFull(d)}`;
+      if (formWrap) formWrap.style.display = '';
+      const items = contents.filter(c => c.content_date === selectedDate);
+      if (!area) return;
       if (!items.length) {
-        area.innerHTML = '<div class="empty-state" style="padding:1rem"><i class="fa-regular fa-calendar-plus"></i>لا يوجد محتوى محفوظ لهذا اليوم.</div>';
+        area.innerHTML = '<div style="font-weight:700;margin-bottom:.65rem"><i class="fa-solid fa-list-check text-gold"></i> حملات هذا اليوم</div><div class="empty-state" style="padding:1rem"><i class="fa-regular fa-calendar-plus"></i>لا يوجد محتوى محفوظ لهذا اليوم.</div>';
         return;
       }
       area.innerHTML = `
@@ -309,11 +351,23 @@
 
     function buildFinalUrl(baseUrl, code) {
       const base = String(baseUrl || '').trim();
-      const ref = String(code || '').trim();
+      let ref = String(code || '').trim();
       if (!base) return '';
       if (!ref) return base;
+
+      // يسمح بإدخال الكود بطريقتين:
+      // 1) WHTS260604  => يضاف كمسار عند الروابط التي تنتهي بـ / أو =
+      // 2) ?reff=WHTS260604 أو reff=WHTS260604 => يضاف كاستعلام Query بدون تشفير علامة ? و =
+      const hasQuerySyntax = ref.startsWith('?') || ref.includes('=') || ref.startsWith('&');
+      if (base.includes('{code}')) return base.replaceAll('{code}', encodeURIComponent(ref.replace(/^\?/, '')));
+
+      if (hasQuerySyntax) {
+        let query = ref.replace(/^\?/, '').replace(/^&/, '');
+        const joiner = base.includes('?') ? '&' : '?';
+        return base.replace(/[?&]$/, '') + joiner + query;
+      }
+
       const enc = encodeURIComponent(ref);
-      if (base.includes('{code}')) return base.replaceAll('{code}', enc);
       if (/[=\/]$/.test(base)) return base + enc;
       return base.replace(/\/+$/, '') + '/' + enc;
     }
@@ -389,6 +443,7 @@
       document.getElementById('saveContentBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> تحديث';
       renderCalendar();
       renderSelectedDay();
+      document.getElementById('contentFormWrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       document.getElementById('contentText').focus();
     }
 

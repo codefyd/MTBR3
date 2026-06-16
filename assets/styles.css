@@ -340,6 +340,20 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
 .highlight-box .hb-sub { color: #cfe0dd; font-size: .85rem; margin-top: .25rem; }
 
 /* ===== تبويب المحتوى التسويقي ===== */
+
+.marketing-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .6rem;
+  margin-bottom: .85rem;
+}
+.mini-stat-card {
+  background: var(--c-surface); border: 1px solid var(--c-line); border-radius: 14px;
+  padding: .65rem .8rem; box-shadow: var(--shadow-sm); min-width: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+}
+.mini-stat-card span { color: var(--c-ink-soft); font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-stat-card strong { color: var(--c-primary-dk); font-size: 1.25rem; line-height: 1; }
 .marketing-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(360px, .9fr);
@@ -351,6 +365,8 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
 .platform-legend { display: flex; flex-wrap: wrap; gap: .45rem .7rem; align-items: center; }
 .legend-item { display: inline-flex; align-items: center; gap: .35rem; color: var(--c-ink-soft); font-size: .88rem; }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.marketing-calendar { overflow-x: auto; padding-bottom: .2rem; }
+.calendar-inner { min-width: 0; }
 .calendar-weekdays,
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .45rem; }
 .calendar-weekdays { margin-bottom: .45rem; }
@@ -414,10 +430,24 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
   .marketing-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
+  .marketing-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; }
+  .mini-stat-card { padding: .5rem .55rem; border-radius: 12px; flex-direction: column; align-items: flex-start; }
+  .mini-stat-card span { font-size: .68rem; max-width: 100%; }
+  .mini-stat-card strong { font-size: 1.05rem; }
+  .marketing-calendar { margin-inline: -.25rem; }
+  .calendar-inner { min-width: 640px; padding-inline: .25rem; }
   .calendar-weekdays,
   .calendar-grid { gap: .3rem; }
   .calendar-cell { min-height: 92px; padding: .4rem; border-radius: 10px; }
   .greg-day { font-size: 1rem; }
   .hijri-day { font-size: .68rem; }
   .campaign-chip { font-size: .68rem; padding: .12rem .38rem; }
+  .marketing-side-panel .panel-body { padding: .9rem; }
+  .day-campaign-card { padding: .75rem; }
+  #finalUrl { min-width: 0; }
+}
+@media (max-width: 430px) {
+  .calendar-inner { min-width: 590px; }
+  .calendar-cell { min-height: 86px; }
+  .platform-legend { font-size: .75rem; }
 }
