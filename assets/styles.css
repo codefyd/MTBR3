@@ -99,7 +99,7 @@ a:hover { color: var(--c-primary-dk); }
   display: flex; align-items: center; gap: .75rem; padding: .8rem 1rem;
   border-radius: var(--radius-sm); color: #cdded9; font-size: 1.05rem;
   transition: background var(--t-fast), color var(--t-fast), padding var(--t-fast);
-  margin-bottom: .25rem; cursor: pointer;
+  margin-bottom: .18rem; cursor: pointer;
 }
 .nav-link-x i { width: 22px; text-align: center; font-size: 1.05rem; }
 .nav-link-x:hover { background: rgba(255,255,255,.08); color: #fff; padding-inline-start: 1.25rem; }
@@ -450,13 +450,13 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
   border-spacing: 0;
   table-layout: fixed;
   direction: rtl;
-  font-size: .92rem;
+  font-size: .84rem;
 }
 .marketing-detail-table th,
 .marketing-detail-table td {
   vertical-align: top;
-  min-width: 278px;
-  max-width: 278px;
+  min-width: 220px;
+  max-width: 220px;
   background: var(--c-surface);
   border-bottom: 1px solid var(--c-line);
   border-inline-start: 1px dashed var(--c-line-soft);
@@ -475,15 +475,15 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
 .marketing-detail-table th:first-child,
 .marketing-detail-table td:first-child { border-inline-start: 0; }
 .detail-row-title {
-  min-width: 158px !important;
-  max-width: 158px !important;
-  width: 158px;
+  min-width: 132px !important;
+  max-width: 132px !important;
+  width: 132px;
   position: sticky;
   right: 0;
   z-index: 5;
   color: var(--c-primary-dk);
   background: var(--c-primary-lt) !important;
-  padding: .85rem .75rem;
+  padding: .65rem .55rem;
   font-weight: 800;
   text-align: start;
   border-inline-end: 2px solid var(--c-primary) !important;
@@ -495,7 +495,7 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
   width: 100%;
   border: 0;
   background: transparent;
-  padding: .75rem .6rem;
+  padding: .5rem .45rem;
   font-family: inherit;
   display: grid;
   gap: .14rem;
@@ -503,16 +503,16 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
   color: var(--c-ink);
   cursor: pointer;
 }
-.detail-date-btn strong { color: var(--c-primary-dk); font-size: 1.18rem; line-height: 1; }
-.detail-date-btn span { font-weight: 800; font-size: .87rem; }
-.detail-date-btn small { color: var(--c-ink-soft); font-size: .72rem; }
+.detail-date-btn strong { color: var(--c-primary-dk); font-size: 1rem; line-height: 1; }
+.detail-date-btn span { font-weight: 800; font-size: .76rem; }
+.detail-date-btn small { color: var(--c-ink-soft); font-size: .66rem; }
 .detail-day-head.today-col .detail-date-btn { background: var(--c-gold-lt); }
 .detail-day-head.selected-col .detail-date-btn {
   background: var(--c-surface);
   box-shadow: inset 0 -3px 0 var(--c-gold);
 }
 .detail-cell {
-  padding: .7rem;
+  padding: .48rem;
   cursor: pointer;
   transition: background var(--t-fast), box-shadow var(--t-fast);
 }
@@ -524,67 +524,74 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
 .detail-empty {
   color: var(--c-ink-soft);
   text-align: center;
-  padding: 1.1rem .35rem;
-  font-size: .85rem;
+  padding: .72rem .25rem;
+  font-size: .78rem;
 }
 .detail-campaign-list,
-.detail-content-list { display: grid; gap: .55rem; }
+.detail-content-list { display: grid; gap: .38rem; }
 .detail-campaign-item,
 .detail-content-item {
   border: 1px solid var(--c-line);
   border-inline-start: 4px solid var(--chip, var(--c-primary));
   background: var(--c-surface);
-  border-radius: 12px;
-  padding: .65rem;
+  border-radius: 10px;
+  padding: .48rem;
   box-shadow: var(--shadow-sm);
 }
 .detail-campaign-item strong {
   display: block;
   color: var(--c-ink);
-  margin-top: .35rem;
-  line-height: 1.4;
+  margin-top: .26rem;
+  line-height: 1.32;
 }
 .detail-campaign-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: .35rem;
-  margin-bottom: .25rem;
+  margin-bottom: .18rem;
 }
+
+.detail-campaign-item .platform-pill,
+.detail-content-item .platform-pill {
+  font-size: .68rem;
+  padding: .12rem .38rem;
+}
+.detail-campaign-item .muted { font-size: .7rem !important; }
 .detail-content-text {
   white-space: pre-wrap;
-  line-height: 1.65;
-  font-size: .86rem;
+  line-height: 1.45;
+  font-size: .78rem;
   color: var(--c-ink);
-  max-height: 178px;
+  max-height: 112px;
   overflow: auto;
   padding-inline-end: .15rem;
 }
 .detail-meta {
-  margin-top: .45rem;
+  margin-top: .32rem;
   color: var(--c-primary-dk);
-  font-size: .8rem;
+  font-size: .72rem;
   font-weight: 700;
 }
 .detail-url {
-  margin-top: .45rem;
+  margin-top: .32rem;
   color: var(--c-primary-dk);
   background: var(--c-primary-lt);
   border: 1px solid var(--c-line-soft);
   border-radius: 9px;
-  padding: .4rem .5rem;
-  font-size: .76rem;
+  padding: .28rem .38rem;
+  font-size: .68rem;
   overflow-wrap: anywhere;
   text-align: left;
 }
 .detail-actions {
   display: flex;
-  gap: .4rem;
-  margin-top: .55rem;
+  gap: .32rem;
+  margin-top: .4rem;
 }
 .detail-icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   justify-content: center;
   padding: 0;
 }
@@ -710,8 +717,8 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
   .marketing-kpi { min-height: 92px; padding: .95rem 1rem; }
   .marketing-kpi .kpi-value { font-size: 1.45rem; }
   .marketing-detail-table th,
-  .marketing-detail-table td { min-width: 238px; max-width: 238px; }
-  .detail-row-title { min-width: 128px !important; max-width: 128px !important; width: 128px; padding: .65rem .55rem; font-size: .82rem; }
+  .marketing-detail-table td { min-width: 190px; max-width: 190px; }
+  .detail-row-title { min-width: 108px !important; max-width: 108px !important; width: 108px; padding: .5rem .42rem; font-size: .74rem; }
   .marketing-calendar { margin-inline: -.25rem; }
   .calendar-inner { min-width: 640px; padding-inline: .25rem; }
   .calendar-weekdays,
