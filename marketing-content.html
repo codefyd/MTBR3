@@ -79,9 +79,20 @@
         </div>
         <div class="content">
           <div class="marketing-stats" id="marketingStats">
-            <div class="mini-stat-card"><span>محتوى مجهز</span><strong id="statPrepared">0</strong></div>
-            <div class="mini-stat-card"><span>حملات الشهر</span><strong id="statCampaigns">0</strong></div>
-            <div class="mini-stat-card"><span>تقارير PDF</span><strong id="statReports">0</strong></div>
+            <div class="kpi-card marketing-kpi">
+              <div class="kpi-icon"><i class="fa-solid fa-pen-nib"></i></div>
+              <div>
+                <div class="kpi-label">محتوى مجهز</div>
+                <div class="kpi-value" id="statPrepared">0</div>
+              </div>
+            </div>
+            <div class="kpi-card gold marketing-kpi">
+              <div class="kpi-icon"><i class="fa-solid fa-bullhorn"></i></div>
+              <div>
+                <div class="kpi-label">حملات الشهر</div>
+                <div class="kpi-value" id="statCampaigns">0</div>
+              </div>
+            </div>
           </div>
           <div class="marketing-layout">
             <div class="panel fade-in marketing-calendar-panel">
@@ -267,11 +278,9 @@
     function renderStats() {
       const prepared = contents.length;
       const campaigns = new Set(contents.map(c => `${c.content_date || ''}|${c.platform_id || ''}`).filter(Boolean)).size;
-      const reports = contents.filter(c => c.media_type === 'pdf').length;
       const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
       set('statPrepared', prepared);
       set('statCampaigns', campaigns);
-      set('statReports', reports);
     }
 
 
@@ -361,7 +370,7 @@
       }).join('');
 
       document.getElementById('calendarArea').innerHTML = `
-        <div class="marketing-detail-note"><i class="fa-regular fa-hand-pointer"></i> اضغط على تاريخ أو خلية لاختيار اليوم، واستخدم التمرير الأفقي لمراجعة الشهر كاملًا بسرعة.</div>
+        <div class="marketing-detail-note"><i class="fa-regular fa-hand-pointer"></i> عرض سريع للشهر كاملًا؛ حرّك الجدول يمينًا ويسارًا واضغط أي يوم لفتح تفاصيله.</div>
         <div class="marketing-detail">
           <table class="marketing-detail-table">
             <thead>
@@ -412,8 +421,8 @@
           ${item.referral_code ? `<div class="detail-meta"><i class="fa-solid fa-tag"></i> ${App.esc(item.referral_code)}</div>` : ''}
           ${item.final_url ? `<div class="detail-url" dir="ltr">${App.esc(item.final_url)}</div>` : ''}
           <div class="detail-actions">
-            <button class="btn-x btn-ghost btn-sm" data-edit="${item.id}"><i class="fa-solid fa-pen"></i></button>
-            <button class="btn-x btn-danger btn-sm" data-delete="${item.id}"><i class="fa-solid fa-trash"></i></button>
+            <button class="btn-x btn-ghost btn-sm detail-icon-btn" data-edit="${item.id}" title="تعديل"><i class="fa-solid fa-pen"></i></button>
+            <button class="btn-x btn-danger btn-sm detail-icon-btn" data-delete="${item.id}" title="حذف"><i class="fa-solid fa-trash"></i></button>
           </div>
         </div>`;
       }).join('')}</div>`;
