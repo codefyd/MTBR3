@@ -59,7 +59,7 @@
           </div>
           <div class="panel fade-in">
             <div class="panel-head">
-              <h2>سجل العمليات <span class="muted" id="cnt" style="font-size:.9rem;font-weight:400"></span></h2>
+              <h2>سجل العمليات <span class="muted" id="cnt" style="font-size:.9rem;font-weight:400"></span> <span class="muted" id="latestOperationAt" style="font-size:.82rem;font-weight:400"></span></h2>
               <input class="field" id="search" placeholder="بحث بالجوال أو الاسم أو رقم العملية أو حالة الرقم" style="max-width:300px" />
             </div>
             <div class="panel-body"><div id="tableArea"></div></div>
@@ -189,6 +189,7 @@
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
       count = c || 0;
       document.getElementById('cnt').textContent = `(${count.toLocaleString('en-US')} صف تقريبًا)`;
+      loadLatestOperationAt();
 
       if (!data.length) {
         area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد عمليات بعد. ابدأ برفع ملف Excel.</div>';
@@ -223,6 +224,25 @@
         </table></div>
         ${pagerHtml(pages)}`;
       wirePager(pages);
+    }
+
+
+    async function loadLatestOperationAt() {
+      const el = document.getElementById('latestOperationAt');
+      if (!el) return;
+      el.textContent = '| جارٍ جلب آخر تاريخ عملية...';
+      try {
+        const { data, error } = await App.sb.from('operations')
+          .select('op_datetime')
+          .not('op_datetime', 'is', null)
+          .order('op_datetime', { ascending: false })
+          .limit(1);
+        if (error) throw error;
+        const latest = data?.[0]?.op_datetime;
+        el.textContent = latest ? `| آخر عملية: ${App.fmtDateTime(latest)}` : '| لا يوجد تاريخ عمليات';
+      } catch (err) {
+        el.textContent = '| تعذر جلب آخر تاريخ عملية';
+      }
     }
 
     function pagerHtml(pages) {

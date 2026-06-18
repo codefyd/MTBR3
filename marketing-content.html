@@ -25,6 +25,7 @@
     let projects = [];
     let contents = [];
     let editingId = null;
+    let marketingView = localStorage.getItem('marketingContent:view') || 'calendar';
 
     (async () => {
       const session = await App.initShell('marketing-content.html');
@@ -90,7 +91,13 @@
                   <h2 id="monthTitle" style="min-width:220px;text-align:center;margin:0"></h2>
                   <button class="btn-x btn-ghost btn-sm" id="nextMonth"><i class="fa-solid fa-chevron-left"></i></button>
                 </div>
-                <div class="platform-legend" id="platformLegend"></div>
+                <div class="marketing-head-actions">
+                  <div class="view-toggle" id="marketingViewToggle" aria-label="طريقة العرض">
+                    <button type="button" class="view-toggle-btn" data-view="calendar"><i class="fa-regular fa-calendar-days"></i> التقويم/الشبكة</button>
+                    <button type="button" class="view-toggle-btn" data-view="detail"><i class="fa-solid fa-table-cells-large"></i> التفصيلي</button>
+                  </div>
+                  <div class="platform-legend" id="platformLegend"></div>
+                </div>
               </div>
               <div class="panel-body">
                 <div class="marketing-calendar" id="calendarArea"></div>
@@ -188,6 +195,10 @@
       document.getElementById('projectId').addEventListener('change', updateFinalUrl);
       document.getElementById('referralCode').addEventListener('input', updateFinalUrl);
       document.getElementById('copyUrl').addEventListener('click', copyFinalUrl);
+      document.querySelectorAll('#marketingViewToggle [data-view]').forEach(btn => {
+        btn.addEventListener('click', () => setMarketingView(btn.dataset.view));
+      });
+      renderViewToggle();
     }
 
     async function loadLookups() {
@@ -241,7 +252,7 @@
       }
       contents = data || [];
       renderStats();
-      renderCalendar();
+      renderMarketingMain();
       renderSelectedDay();
     }
 
@@ -261,6 +272,25 @@
       set('statPrepared', prepared);
       set('statCampaigns', campaigns);
       set('statReports', reports);
+    }
+
+
+    function setMarketingView(view) {
+      marketingView = view === 'detail' ? 'detail' : 'calendar';
+      localStorage.setItem('marketingContent:view', marketingView);
+      renderMarketingMain();
+    }
+
+    function renderViewToggle() {
+      document.querySelectorAll('#marketingViewToggle [data-view]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === marketingView);
+      });
+    }
+
+    function renderMarketingMain() {
+      renderViewToggle();
+      if (marketingView === 'detail') renderDetailedView();
+      else renderCalendar();
     }
 
     function renderCalendar() {
@@ -294,11 +324,99 @@
         btn.addEventListener('click', () => {
           selectedDate = btn.dataset.date;
           editingId = null;
-          renderCalendar();
+          renderMarketingMain();
           renderSelectedDay();
           resetForm(false);
         });
       });
+    }
+
+
+    function renderDetailedView() {
+      const first = monthCursor;
+      const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+      const todayKey = localISO(new Date());
+      const days = Array.from({ length: daysInMonth }, (_, i) => {
+        const dt = new Date(first.getFullYear(), first.getMonth(), i + 1);
+        return { day: i + 1, date: dt, key: localISO(dt) };
+      });
+
+      const headers = days.map(d => `
+        <th class="detail-day-head ${d.key === todayKey ? 'today-col' : ''} ${d.key === selectedDate ? 'selected-col' : ''}">
+          <button type="button" class="detail-date-btn" data-detail-date="${d.key}">
+            <strong>${d.day}</strong>
+            <span>${DOW[(d.date.getDay() + 1) % 7]}</span>
+            <small>${hijriLabel(d.date)}</small>
+          </button>
+        </th>`).join('');
+
+      const campaignCells = days.map(d => {
+        const items = contents.filter(c => c.content_date === d.key);
+        return `<td class="detail-cell ${d.key === selectedDate ? 'selected-detail-cell' : ''}" data-detail-date="${d.key}">${detailCampaignCell(items)}</td>`;
+      }).join('');
+
+      const contentCells = days.map(d => {
+        const items = contents.filter(c => c.content_date === d.key);
+        return `<td class="detail-cell ${d.key === selectedDate ? 'selected-detail-cell' : ''}" data-detail-date="${d.key}">${detailContentCell(items)}</td>`;
+      }).join('');
+
+      document.getElementById('calendarArea').innerHTML = `
+        <div class="marketing-detail-note"><i class="fa-regular fa-hand-pointer"></i> اضغط على تاريخ أو خلية لاختيار اليوم، واستخدم التمرير الأفقي لمراجعة الشهر كاملًا بسرعة.</div>
+        <div class="marketing-detail">
+          <table class="marketing-detail-table">
+            <thead>
+              <tr><th class="detail-row-title">البند</th>${headers}</tr>
+            </thead>
+            <tbody>
+              <tr><th class="detail-row-title"><i class="fa-solid fa-list-check text-gold"></i> حملات هذا اليوم</th>${campaignCells}</tr>
+              <tr><th class="detail-row-title"><i class="fa-solid fa-pen-nib text-gold"></i> محتوى اليوم</th>${contentCells}</tr>
+            </tbody>
+          </table>
+        </div>`;
+
+      document.querySelectorAll('#calendarArea [data-detail-date]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('[data-edit], [data-delete], a')) return;
+          selectedDate = el.dataset.detailDate;
+          editingId = null;
+          renderMarketingMain();
+          renderSelectedDay();
+          resetForm(false);
+        });
+      });
+      document.querySelectorAll('#calendarArea [data-edit]').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); editContent(btn.dataset.edit); }));
+      document.querySelectorAll('#calendarArea [data-delete]').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); deleteContent(btn.dataset.delete); }));
+    }
+
+    function detailCampaignCell(items) {
+      if (!items.length) return '<div class="detail-empty">—</div>';
+      return `<div class="detail-campaign-list">${items.map(item => {
+        const p = getPlatform(item.platform_id);
+        const pr = getProject(item.project_id);
+        const time = item.target_time ? String(item.target_time).slice(0, 5) : 'بدون وقت';
+        return `<div class="detail-campaign-item" style="--chip:${safeColor(p?.color)}">
+          <div class="detail-campaign-title"><span class="platform-pill"><span></span>${App.esc(p?.name || 'منصة')}</span></div>
+          <strong>${App.esc(pr?.name || 'بدون مشروع')}</strong>
+          <div class="muted" style="font-size:.78rem;margin-top:.2rem">${App.esc(time)} — ${MEDIA_LABELS[item.media_type] || 'لا شيء'}</div>
+          <div class="muted" style="font-size:.78rem">${App.esc(item.target_audience || 'جمهور غير محدد')}</div>
+        </div>`;
+      }).join('')}</div>`;
+    }
+
+    function detailContentCell(items) {
+      if (!items.length) return '<div class="detail-empty">لا يوجد محتوى</div>';
+      return `<div class="detail-content-list">${items.map(item => {
+        const text = item.content_text ? App.esc(item.content_text) : '<span class="muted">لا يوجد نص محفوظ</span>';
+        return `<div class="detail-content-item">
+          <div class="detail-content-text">${text}</div>
+          ${item.referral_code ? `<div class="detail-meta"><i class="fa-solid fa-tag"></i> ${App.esc(item.referral_code)}</div>` : ''}
+          ${item.final_url ? `<div class="detail-url" dir="ltr">${App.esc(item.final_url)}</div>` : ''}
+          <div class="detail-actions">
+            <button class="btn-x btn-ghost btn-sm" data-edit="${item.id}"><i class="fa-solid fa-pen"></i></button>
+            <button class="btn-x btn-danger btn-sm" data-delete="${item.id}"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>`;
+      }).join('')}</div>`;
     }
 
     function renderSelectedDay() {
@@ -441,7 +559,7 @@
       document.getElementById('targetAudience').value = item.target_audience || '';
       updateFinalUrl();
       document.getElementById('saveContentBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> تحديث';
-      renderCalendar();
+      renderMarketingMain();
       renderSelectedDay();
       document.getElementById('contentFormWrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       document.getElementById('contentText').focus();
