@@ -388,13 +388,24 @@
           if (e.target.closest('[data-edit], [data-delete], a')) return;
           selectedDate = el.dataset.detailDate;
           editingId = null;
-          renderMarketingMain();
+          applyDetailSelection();
           renderSelectedDay();
           resetForm(false);
         });
       });
       document.querySelectorAll('#calendarArea [data-edit]').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); editContent(btn.dataset.edit); }));
       document.querySelectorAll('#calendarArea [data-delete]').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); deleteContent(btn.dataset.delete); }));
+    }
+
+    function applyDetailSelection() {
+      if (marketingView !== 'detail') return;
+      document.querySelectorAll('#calendarArea .detail-day-head').forEach(th => {
+        const btn = th.querySelector('[data-detail-date]');
+        th.classList.toggle('selected-col', btn?.dataset.detailDate === selectedDate);
+      });
+      document.querySelectorAll('#calendarArea .detail-cell[data-detail-date]').forEach(td => {
+        td.classList.toggle('selected-detail-cell', td.dataset.detailDate === selectedDate);
+      });
     }
 
     function detailCampaignCell(items) {
@@ -568,7 +579,8 @@
       document.getElementById('targetAudience').value = item.target_audience || '';
       updateFinalUrl();
       document.getElementById('saveContentBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> تحديث';
-      renderMarketingMain();
+      if (marketingView === 'detail') applyDetailSelection();
+      else renderMarketingMain();
       renderSelectedDay();
       document.getElementById('contentFormWrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       document.getElementById('contentText').focus();
