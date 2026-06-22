@@ -123,6 +123,15 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// تنظيف نص البحث قبل تضمينه في تعبير .or() الخاص بـ PostgREST.
+// يمنع حقن مرشّحات إضافية عبر الفاصلة/الأقواس/النقطتين، ويُهرّب رموز LIKE.
+function escFilter(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/[,()*:%\\]/g, ' ')  // رموز بناء المرشّحات وعلامات LIKE
+    .trim();
+}
+
 // ------- أدوات Excel -------
 // تنظيف وتطبيع رقم الجوال (نفس منطق دالة SQL)
 // السعودي => 966XXXXXXXXX | الأجنبي => كما هو | المبتور => null
@@ -459,6 +468,6 @@ async function rpcInBatches(fnName, rows, batchSize = 500) {
 }
 
 window.App = {
-  sb, guard, initShell, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc,
+  sb, guard, initShell, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc, escFilter,
   cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, rebuildDonorsInBatches, rebuildDonorsForPhones, PAGE_SIZE,
 };
