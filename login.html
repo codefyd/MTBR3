@@ -49,6 +49,14 @@
     const btn = document.getElementById('loginBtn');
     const errBox = document.getElementById('errBox');
 
+    const idleLogout = new URLSearchParams(location.search).get('idle') === '1' || sessionStorage.getItem('mtbr:idleLogout') === '1';
+    if (idleLogout) {
+      sessionStorage.removeItem('mtbr:idleLogout');
+      errBox.textContent = 'تم تسجيل خروجك تلقائيًا بسبب الخمول لمدة 3 دقائق.';
+      errBox.classList.remove('hidden');
+      history.replaceState(null, '', location.pathname);
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errBox.classList.add('hidden');

@@ -13,7 +13,6 @@
   <div class="app-shell" id="shell"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -54,7 +53,7 @@
                 <div class="muted" style="font-size:.92rem;margin-top:.35rem">
                   الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت
                 </div>
-                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />
+                <input type="file" id="fileInput" accept=".csv" style="display:none" />
               </div>
             </div>
           </div>
@@ -92,7 +91,7 @@
       const dz = document.getElementById('dz');
       dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ معالجة الملف وحفظ العمليات...</div><div class="muted">' + App.esc(file.name) + '</div>';
       try {
-        const rows = await App.readExcel(file);
+        const rows = await App.readCsv(file);
         if (!rows.length) throw new Error('الملف فارغ أو لا يحتوي بيانات');
 
         const records = [];
@@ -171,7 +170,7 @@
       dz.innerHTML = `<i class="fa-solid fa-file-arrow-up"></i>
         <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CSV)</div>
         <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت</div>
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />`;
+        <input type="file" id="fileInput" accept=".csv" style="display:none" />`;
       wireDropzone();
     }
 
@@ -193,7 +192,7 @@
       loadLatestOperationAt();
 
       if (!data.length) {
-        area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد عمليات بعد. ابدأ برفع ملف Excel.</div>';
+        area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد عمليات بعد. ابدأ برفع ملف CSV.</div>';
         return;
       }
 
@@ -259,7 +258,7 @@
       document.getElementById('next')?.addEventListener('click', () => { if (page + 1 < pages) { page++; load(); } });
     }
 
-    // تقرير أرقام الجوال بعد الرفع (نافذة + تصدير Excel)
+    // تقرير أرقام الجوال بعد الرفع (نافذة + تصدير CSV)
     function showPhoneReport(report) {
       const reviewRows = report.rows || [];
       const back = document.createElement('div');
@@ -292,17 +291,14 @@
             </table></div>` : '<div class="empty-state"><i class="fa-solid fa-circle-check"></i>كل الأرقام في الملف صحيحة.</div>'}
           </div>
           <div class="panel-head" style="border-top:1px solid var(--c-line);border-bottom:none;justify-content:flex-end">
-            <button class="btn-x btn-gold" id="phExport" ${reviewRows.length ? '' : 'disabled'}><i class="fa-solid fa-file-excel"></i> تصدير أرقام المراجعة</button>
+            <button class="btn-x btn-gold" id="phExport" ${reviewRows.length ? '' : 'disabled'}><i class="fa-solid fa-file-csv"></i> تصدير أرقام المراجعة CSV</button>
           </div>
         </div>`;
       document.body.appendChild(back);
       back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
       document.getElementById('phClose').addEventListener('click', () => back.remove());
       document.getElementById('phExport')?.addEventListener('click', () => {
-        const ws = window.XLSX.utils.json_to_sheet(reviewRows);
-        const wb = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(wb, ws, 'أرقام للمراجعة');
-        window.XLSX.writeFile(wb, `تقرير-أرقام-الجوال-${new Date().toISOString().slice(0,10)}.xlsx`);
+        App.downloadCsv(`تقرير-أرقام-الجوال-${new Date().toISOString().slice(0,10)}.csv`, reviewRows);
       });
     }
   </script>

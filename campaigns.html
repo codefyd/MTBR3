@@ -13,7 +13,6 @@
   <div class="app-shell" id="shell"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -35,13 +34,13 @@
             <div class="panel-body">
               <div class="dropzone" id="dz">
                 <i class="fa-solid fa-file-arrow-up"></i>
-                <div style="font-weight:700;font-size:1.1rem">رفع ملف مستهدفين (CVS)</div>
-                <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة المطلوبة: الجوال، اسم الحملة، تاريخ الاستهداف — يقبل CSV/Excel حتى لو كان مفصولًا بـ Tab</div>
+                <div style="font-weight:700;font-size:1.1rem">رفع ملف مستهدفين (CSV)</div>
+                <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة المطلوبة: الجوال، اسم الحملة، تاريخ الاستهداف — يقبل ملفات CSV فقط</div>
                 <label style="display:flex;gap:.55rem;align-items:center;justify-content:center;margin-top:.9rem;cursor:pointer">
                   <input type="checkbox" id="recalcAfterUpload" />
                   <span class="muted">إعادة احتساب ملفات المتبرعين بعد الحفظ</span>
                 </label>
-                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none" />
+                <input type="file" id="fileInput" accept=".csv" style="display:none" />
               </div>
             </div>
           </div>
@@ -83,7 +82,7 @@
       const dz = document.getElementById('dz');
       dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ المعالجة وتحديث الملفات...</div><div class="muted">' + App.esc(file.name) + '</div>';
       try {
-        const rows = await App.readExcel(file);
+        const rows = await App.readCsv(file);
         if (!rows.length) throw new Error('الملف فارغ');
 
         const PHONE_KEYS = ['الجوال', 'رقم الجوال', 'رقمالجوال', 'جوال', 'الهاتف', 'رقم الهاتف', 'رقمالهاتف', 'الموبايل', 'رقم الموبايل', 'mobile', 'phone', 'Phone', 'Mobile'];
@@ -155,13 +154,13 @@
     function resetDropzone() {
       const dz = document.getElementById('dz');
       dz.innerHTML = `<i class="fa-solid fa-file-arrow-up"></i>
-        <div style="font-weight:700;font-size:1.1rem">رفع ملف مستهدفين (Excel)</div>
-        <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة المطلوبة: الجوال، اسم الحملة، تاريخ الاستهداف — يقبل CSV/Excel حتى لو كان مفصولًا بـ Tab</div>
+        <div style="font-weight:700;font-size:1.1rem">رفع ملف مستهدفين (CSV)</div>
+        <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة المطلوبة: الجوال، اسم الحملة، تاريخ الاستهداف — يقبل ملفات CSV فقط</div>
         <label style="display:flex;gap:.55rem;align-items:center;justify-content:center;margin-top:.9rem;cursor:pointer">
           <input type="checkbox" id="recalcAfterUpload" />
           <span class="muted">إعادة احتساب ملفات المتبرعين بعد الحفظ</span>
         </label>
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none" />`;
+        <input type="file" id="fileInput" accept=".csv" style="display:none" />`;
       wireDropzone();
     }
 
@@ -231,17 +230,14 @@
             </table></div>
           </div>
           <div class="panel-head" style="border-top:1px solid var(--c-line);border-bottom:none;justify-content:flex-end">
-            <button class="btn-x btn-gold" id="rjExport"><i class="fa-solid fa-file-excel"></i> تصدير قائمة المرفوضة</button>
+            <button class="btn-x btn-gold" id="rjExport"><i class="fa-solid fa-file-csv"></i> تصدير قائمة المرفوضة CSV</button>
           </div>
         </div>`;
       document.body.appendChild(back);
       back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
       document.getElementById('rjClose').addEventListener('click', () => back.remove());
       document.getElementById('rjExport').addEventListener('click', () => {
-        const ws = window.XLSX.utils.json_to_sheet(rejected);
-        const wb = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(wb, ws, 'أرقام مرفوضة');
-        window.XLSX.writeFile(wb, `أرقام-مرفوضة-حملات-${new Date().toISOString().slice(0,10)}.xlsx`);
+        App.downloadCsv(`أرقام-مرفوضة-حملات-${new Date().toISOString().slice(0,10)}.csv`, rejected);
       });
     }
   </script>

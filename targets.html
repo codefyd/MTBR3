@@ -36,7 +36,6 @@
   <div class="app-shell" id="shell"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -91,7 +90,7 @@
           <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
             <select class="field" id="monthSel" style="max-width:130px">${monthOpts}</select>
             <select class="field" id="yearSel" style="max-width:110px">${yearOpts.join('')}</select>
-            <button class="btn-x btn-ghost btn-sm" id="exportBtn"><i class="fa-solid fa-file-excel"></i> تصدير</button>
+            <button class="btn-x btn-ghost btn-sm" id="exportBtn"><i class="fa-solid fa-file-csv"></i> تصدير CSV</button>
           </div>
         </div>
         <div class="content" id="area">
@@ -394,10 +393,7 @@
         o['ملاحظات'] = row.note || '';
         return o;
       });
-      const ws = window.XLSX.utils.json_to_sheet(out);
-      const wb = window.XLSX.utils.book_new();
-      window.XLSX.utils.book_append_sheet(wb, ws, `${MONTHS_AR[month - 1]} ${year}`);
-      window.XLSX.writeFile(wb, `مستهدفات-${year}-${String(month).padStart(2, '0')}.xlsx`);
+      App.downloadCsv(`مستهدفات-${year}-${String(month).padStart(2, '0')}.csv`, out);
       App.toast('تم تصدير الجدول.', 'ok');
     }
   </script>

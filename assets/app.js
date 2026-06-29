@@ -47,7 +47,7 @@ function renderSidebar(activeHref, userEmail) {
       <nav style="flex:1">${links}</nav>
       <div class="sidebar-footer">
         <div style="padding:.75rem 1rem;font-size:.85rem;color:#a9c4be;border-top:1px solid rgba(255,255,255,.12);margin-bottom:.5rem;word-break:break-all">
-          <i class="fa-solid fa-user-shield"></i> ${userEmail || ''}
+          <i class="fa-solid fa-user-shield"></i> ${esc(userEmail || '')}
         </div>
         <div class="nav-link-x" id="logoutBtn" style="color:#f3c9c2">
           <i class="fa-solid fa-right-from-bracket"></i><span>تسجيل الخروج</span>
@@ -70,6 +70,59 @@ function wireSidebar() {
   });
 }
 
+// ------- تسجيل خروج تلقائي عند الخمول -------
+const IDLE_LOGOUT_MS = 3 * 60 * 1000;
+const IDLE_ACTIVITY_KEY = 'mtbr:lastActivityAt';
+let _idleTimerStarted = false;
+let _idleTimeoutId = null;
+let _idleSigningOut = false;
+let _lastActivityAt = Date.now();
+
+function getLastActivity() {
+  try {
+    const saved = Number(localStorage.getItem(IDLE_ACTIVITY_KEY) || 0);
+    if (saved) _lastActivityAt = saved;
+  } catch (_) {}
+  return _lastActivityAt;
+}
+
+function scheduleIdleCheck() {
+  clearTimeout(_idleTimeoutId);
+  const elapsed = Date.now() - getLastActivity();
+  const delay = Math.max(0, IDLE_LOGOUT_MS - elapsed);
+  _idleTimeoutId = setTimeout(checkIdleTimeout, delay + 100);
+}
+
+function markActivity() {
+  _lastActivityAt = Date.now();
+  try { localStorage.setItem(IDLE_ACTIVITY_KEY, String(_lastActivityAt)); } catch (_) {}
+  if (_idleTimerStarted) scheduleIdleCheck();
+}
+
+async function logoutForIdle() {
+  if (_idleSigningOut) return;
+  _idleSigningOut = true;
+  try { await sb.auth.signOut(); } catch (_) {}
+  try { sessionStorage.setItem('mtbr:idleLogout', '1'); } catch (_) {}
+  location.href = 'login.html?idle=1';
+}
+
+function checkIdleTimeout() {
+  const elapsed = Date.now() - getLastActivity();
+  if (elapsed >= IDLE_LOGOUT_MS) logoutForIdle();
+  else scheduleIdleCheck();
+}
+
+function startIdleLogout() {
+  if (_idleTimerStarted) return;
+  _idleTimerStarted = true;
+  markActivity();
+  const events = ['pointerdown', 'keydown', 'mousemove', 'scroll', 'touchstart'];
+  events.forEach(ev => window.addEventListener(ev, markActivity, { passive: true }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkIdleTimeout(); });
+  window.addEventListener('storage', (e) => { if (e.key === IDLE_ACTIVITY_KEY) scheduleIdleCheck(); });
+}
+
 // تهيئة هيكل الصفحة (الشريط + منطقة المحتوى) — يُستدعى بعد التحقق من الجلسة
 async function initShell(activeHref) {
   const session = await guard('app');
@@ -79,6 +132,7 @@ async function initShell(activeHref) {
     renderSidebar(activeHref, email) +
     `<div class="main-area" id="mainArea"></div>`;
   wireSidebar();
+  startIdleLogout();
   return session;
 }
 
@@ -93,7 +147,8 @@ function toast(msg, type = 'ok') {
   }
   const icon = type === 'ok' ? 'fa-circle-check' : type === 'err' ? 'fa-circle-xmark' : 'fa-circle-info';
   el.className = `toast-x ${type}`;
-  el.innerHTML = `<i class="fa-solid ${icon}" style="margin-inline-end:.5rem"></i>${msg}`;
+  el.innerHTML = `<i class="fa-solid ${icon}" style="margin-inline-end:.5rem"></i><span></span>`;
+  el.querySelector('span').textContent = msg == null ? '' : String(msg);
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => el.remove(), 4500);
 }
@@ -132,7 +187,7 @@ function escFilter(s) {
     .trim();
 }
 
-// ------- أدوات Excel -------
+// ------- أدوات CSV والتنسيق -------
 // تنظيف وتطبيع رقم الجوال (نفس منطق دالة SQL)
 // السعودي => 966XXXXXXXXX | الأجنبي => كما هو | المبتور => null
 const SA_OPERATORS = ['50','51','52','53','54','55','56','57','58','59'];
@@ -246,12 +301,6 @@ function toISO(v) {
     return `${y}-${p(mo)}-${p(d)}T${p(H)}:${p(M)}:${p(S)}${KSA}`;
   }
 
-  // 1) أرقام Excel التسلسلية للتاريخ
-  if (typeof v === 'number' && window.XLSX?.SSF) {
-    const d = window.XLSX.SSF.parse_date_code(v);
-    if (d) return isoKSA(d.y, d.m, d.d, d.H || 0, d.M || 0, Math.floor(d.S || 0));
-  }
-
   let s = String(v).trim();
   if (!s) return null;
 
@@ -311,7 +360,7 @@ function toISO(v) {
   return isoKSA(p.getFullYear(), p.getMonth() + 1, p.getDate(),
                 p.getHours(), p.getMinutes(), p.getSeconds());
 }
-// تطبيع اسم العمود حتى نقبل اختلافات Excel/CSV مثل BOM، مسافات خفية، _، -، واختلافات الهمزات
+// تطبيع اسم العمود حتى نقبل اختلافات CSV مثل BOM، مسافات خفية، _، -، واختلافات الهمزات
 function normalizeHeaderName(value) {
   return String(value || '')
     .replace(/[\uFEFF\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
@@ -364,27 +413,71 @@ function parseDelimitedText(text, delimiter) {
   });
 }
 
-// قراءة ملف Excel/CSV وإرجاع مصفوفة صفوف ككائنات
-// CSV: ندعم الفاصلة، الفاصلة المنقوطة، والتاب لأن بعض ملفات المتاجر تخرج TSV رغم امتداد CSV.
-async function readExcel(file) {
-  const buf = await file.arrayBuffer();
+// قراءة ملف CSV فقط وإرجاع مصفوفة صفوف ككائنات
+// ندعم الفاصلة، الفاصلة المنقوطة، والتاب داخل ملفات .csv لأن بعض الأنظمة تصدّر CSV بفواصل مختلفة.
+async function readCsv(file) {
   const name = (file?.name || '').toLowerCase();
-
-  if (/\.(csv|txt|tsv)$/.test(name)) {
-    const text = new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
-    const firstLine = text.split(/\r?\n/).find(l => l.trim()) || '';
-    const counts = {
-      '\t': (firstLine.match(/\t/g) || []).length,
-      ';': (firstLine.match(/;/g) || []).length,
-      ',': (firstLine.match(/,/g) || []).length,
-    };
-    const delimiter = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] || ',';
-    return parseDelimitedText(text, delimiter);
+  if (!/\.csv$/.test(name)) {
+    throw new Error('يُسمح برفع ملفات CSV فقط. احفظ الملف بصيغة .csv ثم أعد المحاولة.');
   }
+  const buf = await file.arrayBuffer();
+  const text = new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
+  const firstLine = text.split(/\r?\n/).find(l => l.trim()) || '';
+  const counts = {
+    '\t': (firstLine.match(/\t/g) || []).length,
+    ';': (firstLine.match(/;/g) || []).length,
+    ',': (firstLine.match(/,/g) || []).length,
+  };
+  const delimiter = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] || ',';
+  return parseDelimitedText(text, delimiter);
+}
 
-  const wb = window.XLSX.read(buf, { type: 'array', raw: false, codepage: 65001 });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  return window.XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
+function csvCell(value) {
+  if (value === null || value === undefined) return '';
+  let s = String(value);
+  // حماية من CSV formula injection عند فتح الملف في Excel أو Google Sheets.
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+function objectsToCsv(rows) {
+  rows = rows || [];
+  const headers = Array.from(rows.reduce((set, row) => {
+    Object.keys(row || {}).forEach(k => set.add(k));
+    return set;
+  }, new Set()));
+  if (!headers.length) return '';
+  const lines = [headers.map(csvCell).join(',')];
+  rows.forEach(row => lines.push(headers.map(h => csvCell(row?.[h])).join(',')));
+  return lines.join('\r\n');
+}
+
+function downloadTextFile(filename, content, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob(['\uFEFF' + content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadCsv(filename, rows) {
+  downloadTextFile(filename, objectsToCsv(rows), 'text/csv;charset=utf-8');
+}
+
+function downloadCsvSections(filename, sections) {
+  const parts = [];
+  (sections || []).forEach(section => {
+    if (!section) return;
+    if (section.title) parts.push(csvCell(section.title));
+    const csv = objectsToCsv(section.rows || []);
+    if (csv) parts.push(csv);
+    parts.push('');
+  });
+  downloadTextFile(filename, parts.join('\r\n'), 'text/csv;charset=utf-8');
 }
 
 
@@ -469,5 +562,5 @@ async function rpcInBatches(fnName, rows, batchSize = 500) {
 
 window.App = {
   sb, guard, initShell, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc, escFilter,
-  cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readExcel, rpcInBatches, rebuildDonorsInBatches, rebuildDonorsForPhones, PAGE_SIZE,
+  cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readCsv, downloadCsv, downloadCsvSections, rpcInBatches, rebuildDonorsInBatches, rebuildDonorsForPhones, PAGE_SIZE,
 };

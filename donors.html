@@ -13,7 +13,6 @@
   <div class="app-shell" id="shell"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -610,7 +609,7 @@
           </div>
           <div class="panel-head" style="border-top:1px solid var(--c-line);border-bottom:none">
             <button class="btn-x btn-danger btn-sm" id="jarClear"><i class="fa-solid fa-trash"></i> تفريغ الحصالة</button>
-            <button class="btn-x btn-gold" id="jarExport" ${phones.length ? '' : 'disabled'}><i class="fa-solid fa-file-excel"></i> تصدير Excel</button>
+            <button class="btn-x btn-gold" id="jarExport" ${phones.length ? '' : 'disabled'}><i class="fa-solid fa-file-csv"></i> تصدير CSV</button>
           </div>
         </div>`;
       document.body.appendChild(back);
@@ -674,11 +673,8 @@
         'الحالة': r.status || '',
         'الفئة': r.category || '',
       }));
-      const ws = window.XLSX.utils.json_to_sheet(data);
-      const wb = window.XLSX.utils.book_new();
-      window.XLSX.utils.book_append_sheet(wb, ws, 'الحصالة');
       const today = new Date().toISOString().slice(0, 10);
-      window.XLSX.writeFile(wb, `الحصالة-${today}.xlsx`);
+      App.downloadCsv(`الحصالة-${today}.csv`, data);
       App.toast(`تم تصدير ${rows.length.toLocaleString('en-US')} متبرع.`, 'ok');
     }
   </script>

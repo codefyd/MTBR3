@@ -13,7 +13,6 @@
   <div class="app-shell" id="shell"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -37,7 +36,7 @@
           <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
             <label class="muted" style="font-size:.9rem">السنة</label>
             <select class="field" id="yearSel" style="max-width:140px"></select>
-            <button class="btn-x btn-ghost btn-sm" id="exportBtn"><i class="fa-solid fa-file-excel"></i> تصدير Excel</button>
+            <button class="btn-x btn-ghost btn-sm" id="exportBtn"><i class="fa-solid fa-file-csv"></i> تصدير CSV</button>
           </div>
         </div>
         <div class="content" id="reportArea">
@@ -218,7 +217,7 @@
       </div>`;
     }
 
-    // تصدير التقرير الحالي إلى Excel (ورقة ملخص + ورقة شهرية + أعلى المتبرعين)
+    // تصدير التقرير الحالي إلى CSV (أقسام: ملخص + تفصيل شهري + أعلى المتبرعين)
     function exportReport() {
       if (!lastData) { App.toast('لا يوجد تقرير للتصدير.', 'err'); return; }
       const d = lastData;
@@ -248,11 +247,11 @@
         'الإجمالي': x.amt,
         'عدد التبرعات': x.cnt,
       }));
-      const wb = window.XLSX.utils.book_new();
-      window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(summary), 'ملخص');
-      window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(monthly), 'التفصيل الشهري');
-      window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(donors), 'أعلى المتبرعين');
-      window.XLSX.writeFile(wb, `تقرير-${d.year}.xlsx`);
+      App.downloadCsvSections(`تقرير-${d.year}.csv`, [
+        { title: 'ملخص', rows: summary },
+        { title: 'التفصيل الشهري', rows: monthly },
+        { title: 'أعلى المتبرعين', rows: donors },
+      ]);
       App.toast('تم تصدير التقرير.', 'ok');
     }
   </script>
