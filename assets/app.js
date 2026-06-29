@@ -71,7 +71,7 @@ function wireSidebar() {
 }
 
 // ------- تسجيل خروج تلقائي عند الخمول -------
-const IDLE_LOGOUT_MS = 3 * 60 * 1000;
+const IDLE_LOGOUT_MS = 6 * 60 * 1000;
 const IDLE_ACTIVITY_KEY = 'mtbr:lastActivityAt';
 let _idleTimerStarted = false;
 let _idleTimeoutId = null;
