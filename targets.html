@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -16,8 +17,9 @@
     .tgt-head-card .h-value { font-size:1.25rem; font-weight:700; color:var(--c-ink); }
     .tgt-head-card.season { background:linear-gradient(135deg,var(--c-gold-lt),#fff); border-color:var(--c-gold); }
     table.tgt { width:100%; border-collapse:collapse; font-size:.9rem; white-space:nowrap; }
+    table.tgt th, table.tgt td { text-align:center; vertical-align:middle; }
     table.tgt thead th { position:sticky; top:0; background:var(--c-primary,#0f5e54); color:#fff; padding:.6rem .5rem; font-weight:600; font-size:.82rem; z-index:2; }
-    table.tgt tbody td { padding:.4rem .5rem; border-bottom:1px solid var(--c-line); text-align:center; }
+    table.tgt tbody td { padding:.4rem .5rem; border-bottom:1px solid var(--c-line); }
     table.tgt tbody tr:hover { background:var(--c-gold-lt); }
     table.tgt tr.is-friday td { background:rgba(15,94,84,.06); }
     table.tgt tr.is-friday:hover td { background:rgba(15,94,84,.12); }
@@ -27,7 +29,13 @@
     .cum-ok  { color:#fff; background:var(--c-success,#2e9e6b); border-radius:8px; padding:.2rem .45rem; font-weight:700; display:inline-block; }
     .cum-bad { color:#fff; background:var(--c-danger,#c0473e);  border-radius:8px; padding:.2rem .45rem; font-weight:700; display:inline-block; }
     .pct-pill { font-weight:700; }
-    .tgt-foot td { font-weight:800; background:#f6f7f6; border-top:2px solid var(--c-primary); }
+    .tgt-foot td { font-weight:800; background:#f6f7f6; border-top:2px solid var(--c-primary); text-align:center; vertical-align:middle; }
+    .tgt-summary-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.75rem; margin-bottom:1.15rem; }
+    .tgt-summary-card { background:#fff; border:1px solid var(--c-line); border-radius:14px; padding:.85rem 1rem; box-shadow:0 8px 20px rgba(15,94,84,.05); }
+    .tgt-summary-card .s-label { font-size:.78rem; color:var(--c-ink-soft); margin-bottom:.25rem; }
+    .tgt-summary-card .s-value { font-size:1.08rem; font-weight:800; color:var(--c-ink); }
+    .tgt-summary-card.accent { background:linear-gradient(135deg,rgba(15,94,84,.09),#fff); border-color:rgba(15,94,84,.22); }
+    .tgt-summary-card.gold { background:linear-gradient(135deg,var(--c-gold-lt),#fff); border-color:var(--c-gold); }
     .save-dot { font-size:.7rem; margin-inline-start:.3rem; opacity:0; transition:opacity .25s; color:var(--c-success); }
     .save-dot.show { opacity:1; }
   </style>
@@ -111,6 +119,107 @@
       render();
     }
 
+
+    function calcTotals(days) {
+      let totTarget = 0, totGross = 0, totAchieved = 0, totDed = 0, totDonors = 0, totNew = 0;
+      (days || []).forEach(row => {
+        const target = Number(row.target || 0);
+        const gross = Number(row.achieved || 0);
+        const ded = Number(row.deduction || 0);
+        const net = gross - ded;
+        totTarget += target;
+        totGross += gross;
+        totAchieved += net;
+        totDed += ded;
+        totDonors += Number(row.donors || 0);
+        totNew += Number(row.new_donors || 0);
+      });
+      const totPct = totTarget > 0 ? Math.round((totAchieved / totTarget) * 100) : 0;
+      const totAvg = totDonors > 0 ? totAchieved / totDonors : 0;
+      return {
+        anyDeduction: (days || []).some(r => Number(r.deduction || 0) > 0),
+        totTarget,
+        totGross,
+        totAchieved,
+        totDed,
+        totRemaining: Math.max(0, totTarget - totAchieved),
+        totPct,
+        totAvg,
+        totDonors,
+        totNew,
+      };
+    }
+
+    function summaryCardsHtml(totals) {
+      return `
+        <div class="tgt-summary-cards fade-in" aria-label="إجماليات الشهر">
+          <div class="tgt-summary-card accent">
+            <div class="s-label"><i class="fa-solid fa-bullseye text-gold"></i> إجمالي المستهدف</div>
+            <div class="s-value" id="sumTarget">${App.fmtMoney(totals.totTarget)}</div>
+          </div>
+          <div class="tgt-summary-card accent">
+            <div class="s-label"><i class="fa-solid fa-hand-holding-dollar text-gold"></i> إجمالي المحقق</div>
+            <div class="s-value" id="sumGross">${App.fmtMoney(totals.totGross)}</div>
+          </div>
+          <div class="tgt-summary-card">
+            <div class="s-label"><i class="fa-solid fa-scale-balanced text-gold"></i> المتبقي</div>
+            <div class="s-value" id="sumRemaining">${App.fmtMoney(totals.totRemaining)}</div>
+          </div>
+          <div class="tgt-summary-card">
+            <div class="s-label"><i class="fa-solid fa-minus-circle text-gold"></i> المبالغ المستثناة</div>
+            <div class="s-value" id="sumDed">${App.fmtMoney(totals.totDed)}</div>
+          </div>
+          ${totals.anyDeduction ? `<div class="tgt-summary-card gold">
+            <div class="s-label"><i class="fa-solid fa-filter-circle-dollar text-gold"></i> صافي التبرعات</div>
+            <div class="s-value" id="sumNet">${App.fmtMoney(totals.totAchieved)}</div>
+          </div>` : ''}
+          <div class="tgt-summary-card gold">
+            <div class="s-label"><i class="fa-solid fa-percent text-gold"></i> نسبة التحقيق</div>
+            <div class="s-value" id="sumPct">${totals.totPct}%</div>
+          </div>
+          <div class="tgt-summary-card">
+            <div class="s-label"><i class="fa-solid fa-users text-gold"></i> المتبرعون</div>
+            <div class="s-value" id="sumDonors">${App.fmtNum(totals.totDonors)}</div>
+          </div>
+          <div class="tgt-summary-card">
+            <div class="s-label"><i class="fa-solid fa-user-plus text-gold"></i> الجدد</div>
+            <div class="s-value" id="sumNew">${App.fmtNum(totals.totNew)}</div>
+          </div>
+          <div class="tgt-summary-card">
+            <div class="s-label"><i class="fa-solid fa-receipt text-gold"></i> معدل الفاتورة</div>
+            <div class="s-value" id="sumAvg">${App.fmtMoney(totals.totAvg)}</div>
+          </div>
+        </div>`;
+    }
+
+    function updateTotalsDisplay(totals) {
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      };
+      setText('sumTarget', App.fmtMoney(totals.totTarget));
+      setText('sumGross', App.fmtMoney(totals.totGross));
+      setText('sumRemaining', App.fmtMoney(totals.totRemaining));
+      setText('sumDed', App.fmtMoney(totals.totDed));
+      setText('sumNet', App.fmtMoney(totals.totAchieved));
+      setText('sumPct', `${totals.totPct}%`);
+      setText('sumDonors', App.fmtNum(totals.totDonors));
+      setText('sumNew', App.fmtNum(totals.totNew));
+      setText('sumAvg', App.fmtMoney(totals.totAvg));
+
+      setText('footTarget', App.fmtMoney(totals.totTarget));
+      setText('footGross', App.fmtMoney(totals.totGross));
+      setText('footRemaining', App.fmtMoney(totals.totRemaining));
+      setText('footDed', App.fmtMoney(totals.totDed));
+      setText('footNet', App.fmtMoney(totals.totAchieved));
+      setText('footPct', `${totals.totPct}%`);
+      setText('footCumTarget', App.fmtMoney(totals.totTarget));
+      setText('footCumAchieved', App.fmtMoney(totals.totAchieved));
+      setText('footDonors', App.fmtNum(totals.totDonors));
+      setText('footNew', App.fmtNum(totals.totNew));
+      setText('footAvg', App.fmtMoney(totals.totAvg));
+    }
+
     function render() {
       const days = data.days || [];
 
@@ -157,12 +266,14 @@
           </div>
         </div>`;
 
+      const totals = calcTotals(days);
+      const totalsCards = summaryCardsHtml(totals);
+
       // هل يوجد أي خصم في الشهر؟ => نُظهر عمود صافي التبرعات
-      const anyDeduction = days.some(r => Number(r.deduction || 0) > 0);
+      const anyDeduction = totals.anyDeduction;
 
       // حساب التراكمي
       let cumTarget = 0, cumAchieved = 0;
-      let totTarget = 0, totAchieved = 0, totDed = 0, totDonors = 0, totNew = 0;
 
       const rowsHtml = days.map(row => {
         const dt = new Date(row.date + 'T00:00:00');
@@ -176,7 +287,6 @@
         const remaining = Math.max(0, target - net);
         const pct = target > 0 ? Math.round((net / target) * 100) : 0;
         cumTarget += target; cumAchieved += net;
-        totTarget += target; totAchieved += net; totDed += ded; totDonors += Number(row.donors||0); totNew += Number(row.new_donors||0);
         const avg = row.donors > 0 ? net / row.donors : 0;
         const cumOk = cumAchieved >= cumTarget;
         const pctCls = pct >= 100 ? 'cum-ok' : (pct >= 60 ? '' : '');
@@ -201,34 +311,32 @@
         </tr>`;
       }).join('');
 
-      const totPct = totTarget > 0 ? Math.round((totAchieved / totTarget) * 100) : 0;
-      const totAvg = totDonors > 0 ? totAchieved / totDonors : 0;
-
       const footHtml = `<tr class="tgt-foot">
         <td colspan="3">الإجمالي</td>
-        <td>${App.fmtMoney(totTarget)}</td>
-        <td>${App.fmtMoney(totAchieved + totDed)}</td>
-        <td>${App.fmtMoney(Math.max(0, totTarget - totAchieved))}</td>
-        <td>${App.fmtMoney(totDed)}</td>
-        ${anyDeduction ? `<td>${App.fmtMoney(totAchieved)}</td>` : ''}
-        <td>${totPct}%</td>
-        <td>${App.fmtMoney(totTarget)}</td>
-        <td>${App.fmtMoney(totAchieved)}</td>
-        <td>${App.fmtNum(totDonors)}</td>
-        <td>${App.fmtNum(totNew)}</td>
-        <td>${App.fmtMoney(totAvg)}</td>
+        <td id="footTarget">${App.fmtMoney(totals.totTarget)}</td>
+        <td id="footGross">${App.fmtMoney(totals.totGross)}</td>
+        <td id="footRemaining">${App.fmtMoney(totals.totRemaining)}</td>
+        <td id="footDed">${App.fmtMoney(totals.totDed)}</td>
+        ${anyDeduction ? `<td id="footNet">${App.fmtMoney(totals.totAchieved)}</td>` : ''}
+        <td id="footPct">${totals.totPct}%</td>
+        <td id="footCumTarget">${App.fmtMoney(totals.totTarget)}</td>
+        <td id="footCumAchieved">${App.fmtMoney(totals.totAchieved)}</td>
+        <td id="footDonors">${App.fmtNum(totals.totDonors)}</td>
+        <td id="footNew">${App.fmtNum(totals.totNew)}</td>
+        <td id="footAvg">${App.fmtMoney(totals.totAvg)}</td>
         <td></td>
       </tr>`;
 
       const headers = `
         <th>اليوم</th><th>التاريخ الميلادي</th><th>التاريخ الهجري</th>
-        <th>الهدف</th><th>المحقق</th><th>المتبقي</th><th>خصم التبرعات</th>
+        <th>الهدف</th><th>المحقق</th><th>المتبقي</th><th>المبالغ المستثناة</th>
         ${anyDeduction ? '<th>صافي التبرعات</th>' : ''}
         <th>نسبة التحقيق</th><th>تراكمي المستهدف</th><th>تراكمي التبرعات</th>
         <th>المتبرعون</th><th>الجدد</th><th>معدل الفاتورة</th><th>ملاحظات</th>`;
 
       document.getElementById('area').innerHTML = `
         ${headCards}
+        ${totalsCards}
         <div class="panel fade-in">
           <div class="panel-head">
             <h2><i class="fa-solid fa-table-list"></i> جدول ${MONTHS_AR[month - 1]} ${year}</h2>
@@ -319,11 +427,10 @@
     // إعادة حساب الأعمدة المشتقة (المتبقي/الصافي/النِسب/التراكمي/الألوان) محليًا
     function recomputeDerived() {
       const days = data.days || [];
-      const anyDed = days.some(r => Number(r.deduction || 0) > 0);
+      const totals = calcTotals(days);
+      const anyDed = totals.anyDeduction;
       const trs = document.querySelectorAll('tr[data-date]');
       let cumTarget = 0, cumAchieved = 0;
-      let totTarget = 0, totAchieved = 0, totDed = 0;
-      const dailyTarget = Number(data.default_daily || 0);
       days.forEach((row, i) => {
         const tr = trs[i]; if (!tr) return;
         const target = Number(row.target || 0);
@@ -333,7 +440,6 @@
         const remaining = Math.max(0, target - net);
         const pct = target > 0 ? Math.round((net / target) * 100) : 0;
         cumTarget += target; cumAchieved += net;
-        totTarget += target; totAchieved += net; totDed += ded;
         const cells = tr.children;
         // ترتيب الأعمدة: 0 اليوم،1 ميلادي،2 هجري،3 الهدف(input)،4 المحقق،5 المتبقي،
         // 6 خصم(input)،[7 صافي إن وُجد]، نسبة، تراكمي مستهدف، تراكمي تبرعات، ...
@@ -350,6 +456,7 @@
         const avg = row.donors > 0 ? net / row.donors : 0;
         cells[idx + 2].textContent = App.fmtMoney(avg);
       });
+      updateTotalsDisplay(totals);
     }
 
     function flash(id) {
@@ -381,7 +488,7 @@
           'الهدف': target,
           'المحقق': achieved,
           'المتبقي': Math.max(0, target - net),
-          'خصم التبرعات': ded,
+          'المبالغ المستثناة': ded,
         };
         if (anyDed) o['صافي التبرعات'] = net;
         o['نسبة التحقيق'] = pct + '%';
