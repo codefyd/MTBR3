@@ -213,11 +213,13 @@
         const costVal = Number(r.cost || 0) > 0 ? Number(r.cost).toFixed(2) : '';
         const roi = r.roi_percent === null ? '—' : `${Number(r.roi_percent).toFixed(1)}%`;
         const roas = r.roas === null ? '—' : `${Number(r.roas).toFixed(2)}x`;
-        const projects = (r.projects || []).slice(0, 3).map(p => `<span class="chip">${App.esc(p)}</span>`).join('') || '—';
-        const moreProjects = (r.projects || []).length > 3 ? `<span class="muted">+${(r.projects || []).length - 3}</span>` : '';
+        const projectList = Array.isArray(r.projects) ? r.projects : [];
+        const projects = projectList.length
+          ? `<button class="proj-trigger analysis-proj-trigger" data-idx="${i}"><i class="fa-solid fa-list"></i> ${App.fmtNum(projectList.length)} مشروع</button>`
+          : '<span class="muted">—</span>';
         return `<tr>
           <td class="analysis-code-cell"><span dir="ltr">${App.esc(r.referral_code)}</span></td>
-          <td>${projects}${moreProjects}</td>
+          <td class="projects-cell analysis-projects-cell">${projects}</td>
           <td>${App.fmtMoney(r.total_amount)} ر.س</td>
           <td>${App.fmtNum(r.donations_count)}</td>
           <td>${App.fmtNum(r.donor_operations)}</td>
@@ -254,6 +256,30 @@
       area.querySelectorAll('.save-cost-btn').forEach(btn => {
         btn.addEventListener('click', () => saveCost(Number(btn.dataset.idx), btn));
       });
+      area.querySelectorAll('.analysis-proj-trigger').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const row = analysisRows[Number(btn.dataset.idx)];
+          openAnalysisProjectsModal(row?.referral_code || '', row?.projects || []);
+        });
+      });
+    }
+
+    function openAnalysisProjectsModal(code, projects) {
+      const back = document.createElement('div');
+      back.className = 'modal-back';
+      const list = Array.isArray(projects) ? projects : [];
+      const chips = list.map(p => `<span class="chip" style="font-size:.92rem;padding:.3rem .7rem;margin:.2rem">${App.esc(p)}</span>`).join('');
+      back.innerHTML = `
+        <div class="modal-box" style="max-width:560px">
+          <div class="panel-head">
+            <h2><i class="fa-solid fa-list text-gold"></i> مشاريع كود الإحالة <span dir="ltr">${App.esc(code)}</span> <span class="muted" style="font-weight:400;font-size:.9rem">(${App.fmtNum(list.length)})</span></h2>
+            <button class="btn-x btn-ghost btn-sm analysis-modal-close"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="panel-body" style="overflow:auto;text-align:right">${chips || '<span class="muted">لا مشاريع</span>'}</div>
+        </div>`;
+      document.body.appendChild(back);
+      back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+      back.querySelector('.analysis-modal-close').addEventListener('click', () => back.remove());
     }
 
     async function saveCost(idx, btn) {

@@ -51,7 +51,7 @@
                 <i class="fa-solid fa-file-arrow-up"></i>
                 <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CSV)</div>
                 <div class="muted" style="font-size:.92rem;margin-top:.35rem">
-                  الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت
+                  الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع/البيان، كود الإحالة/الإحالة#، القيمة، الكمية، المجموع، التاريخ، الوقت
                 </div>
                 <input type="file" id="fileInput" accept=".csv" style="display:none" />
               </div>
@@ -121,8 +121,8 @@
             line_no: lineNo, operation_no: opNo,
             donor_name: App.pick(row, ['الاسم']),
             phone_raw: phoneRaw != null ? String(phoneRaw) : null,
-            project: App.pick(row, ['المشروع']),
-            referral_code: App.pick(row, ['كود الإحالة', 'كودالإحالة']),
+            project: App.pick(row, ['المشروع', 'البيان']),
+            referral_code: App.pick(row, ['كود الإحالة', 'كودالإحالة', 'الإحالة#', '#الإحالة', 'الإحالة', 'احالة#', '#احالة', 'احالة']),
             value: App.toNum(App.pick(row, ['القيمة'])),
             quantity: App.toNum(App.pick(row, ['الكمية'])),
             total: App.toNum(App.pick(row, ['المجموع'])),
@@ -169,7 +169,7 @@
       const dz = document.getElementById('dz');
       dz.innerHTML = `<i class="fa-solid fa-file-arrow-up"></i>
         <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CSV)</div>
-        <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت</div>
+        <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع/البيان، كود الإحالة/الإحالة#، القيمة، الكمية، المجموع، التاريخ، الوقت</div>
         <input type="file" id="fileInput" accept=".csv" style="display:none" />`;
       wireDropzone();
     }
