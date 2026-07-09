@@ -29,6 +29,7 @@ const NAV = [
   { href: 'targets.html', label: 'المستهدفات اليومية', icon: 'fa-bullseye' },
   { href: 'donors.html', label: 'ملفات المتبرعين', icon: 'fa-users' },
   { href: 'operations.html', label: 'العمليات', icon: 'fa-receipt' },
+  { href: 'campaign-analysis.html', label: 'تحليل الحملات التسويقية', icon: 'fa-chart-simple' },
   { href: 'campaigns.html', label: 'المستهدفين في الحملات', icon: 'fa-bullhorn' },
   { href: 'marketing-content.html', label: 'المحتوى التسويقي', icon: 'fa-calendar-days' },
   { href: 'settings.html', label: 'الإعدادات', icon: 'fa-gear' },

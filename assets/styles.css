@@ -740,3 +740,84 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
 .color-field { max-width: 58px; padding: .25rem; height: 42px; }
 .settings-table td { vertical-align: middle; }
 
+
+/* ===== تحليل الحملات التسويقية ===== */
+.analysis-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr)) auto;
+  gap: .9rem;
+  align-items: end;
+}
+.analysis-filter-actions {
+  display: flex;
+  gap: .55rem;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.analysis-help-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  color: var(--c-primary-dk);
+  background: var(--c-primary-lt);
+  border: 1px solid var(--c-line);
+  border-radius: 999px;
+  padding: .45rem .75rem;
+  font-size: .84rem;
+  font-weight: 700;
+}
+.analysis-table-wrap {
+  border: 1px solid var(--c-line);
+  box-shadow: var(--shadow-sm);
+}
+table.analysis-table { font-size: .9rem; }
+table.analysis-table th,
+table.analysis-table td { padding: .55rem .7rem; }
+table.analysis-table thead th {
+  top: 0;
+  z-index: 3;
+}
+.analysis-code-cell {
+  font-weight: 800;
+  color: var(--c-primary-dk);
+  background: rgba(15,94,84,.045);
+}
+.cost-input {
+  max-width: 120px;
+  margin: 0 auto;
+  text-align: center;
+  direction: ltr;
+}
+.roi-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  padding: .22rem .55rem;
+  border-radius: 999px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-line);
+  color: var(--c-ink-soft);
+  font-weight: 800;
+  direction: ltr;
+}
+.roi-chip.good {
+  background: var(--c-primary-lt);
+  color: var(--c-primary-dk);
+}
+.roi-chip.low {
+  background: var(--c-gold-lt);
+  color: var(--c-gold);
+}
+
+@media (max-width: 1180px) {
+  .analysis-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analysis-filter-actions { justify-content: flex-start; }
+}
+@media (max-width: 720px) {
+  .analysis-filter-grid { grid-template-columns: 1fr; }
+  .analysis-filter-actions .btn-x { flex: 1; justify-content: center; }
+  .analysis-help-pill { border-radius: 12px; align-items: flex-start; }
+  table.analysis-table { font-size: .82rem; }
+}
