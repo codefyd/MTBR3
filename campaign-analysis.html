@@ -76,7 +76,7 @@
           <div class="panel fade-in">
             <div class="panel-head">
               <h2>أداء أكواد الإحالة <span class="muted" id="rowsCount" style="font-size:.9rem;font-weight:400"></span></h2>
-              <div class="analysis-help-pill"><i class="fa-solid fa-circle-info"></i> ROAS = التبرعات ÷ التكلفة، ونسبة العائد = صافي العائد ÷ التكلفة</div>
+              <div class="analysis-help-pill"><i class="fa-solid fa-circle-info"></i> ROAS = التبرعات ÷ التكلفة، ونسبة التكلفة من العوائد = التكلفة ÷ إجمالي التبرعات</div>
             </div>
             <div class="panel-body"><div id="analysisTable"></div></div>
           </div>
@@ -167,6 +167,7 @@
         net_return: Number(r.net_return || (total - cost)),
         roas: r.roas === null || r.roas === undefined ? null : Number(r.roas),
         roi_percent: r.roi_percent === null || r.roi_percent === undefined ? null : Number(r.roi_percent),
+        cost_revenue_percent: total > 0 ? (cost / total * 100) : null,
         rows_count: Number(r.rows_count || 0),
         donations_count: Number(r.donations_count || 0),
         donor_operations: Number(r.donor_operations || 0),
@@ -181,14 +182,14 @@
       const uniqueCodes = rows.length;
       const uniqueDonors = rows.reduce((s, r) => s + Number(r.unique_donors || 0), 0);
       const roas = totalCost > 0 ? totalAmount / totalCost : null;
-      const roi = totalCost > 0 ? ((net / totalCost) * 100) : null;
+      const costRevenuePercent = totalAmount > 0 ? ((totalCost / totalAmount) * 100) : null;
 
       document.getElementById('summaryCards').innerHTML = `
         ${kpiCard('إجمالي التبرعات', App.fmtMoney(totalAmount) + ' ر.س', 'fa-sack-dollar')}
         ${kpiCard('إجمالي التكلفة', App.fmtMoney(totalCost) + ' ر.س', 'fa-coins', true)}
         ${kpiCard('صافي العائد', App.fmtMoney(net) + ' ر.س', 'fa-arrow-trend-up')}
         ${kpiCard('العائد على التكلفة', roas === null ? '—' : roas.toFixed(2) + 'x', 'fa-gauge-high', true)}
-        ${kpiCard('نسبة العائد', roi === null ? '—' : roi.toFixed(1) + '%', 'fa-percent')}
+        ${kpiCard('نسبة التكلفة من العوائد', costRevenuePercent === null ? '—' : costRevenuePercent.toFixed(1) + '%', 'fa-percent')}
         ${kpiCard('أكواد / متبرعون فريدون', `${App.fmtNum(uniqueCodes)} / ${App.fmtNum(uniqueDonors)}`, 'fa-fingerprint', true)}
       `;
     }
@@ -211,7 +212,9 @@
 
       const body = rows.map((r, i) => {
         const costVal = Number(r.cost || 0) > 0 ? Number(r.cost).toFixed(2) : '';
-        const roi = r.roi_percent === null ? '—' : `${Number(r.roi_percent).toFixed(1)}%`;
+        const costPercentVal = r.cost_revenue_percent;
+        const costPercent = costPercentVal === null ? '—' : `${Number(costPercentVal).toFixed(1)}%`;
+        const costPercentClass = costPercentVal === null ? '' : (costPercentVal <= 25 ? 'good' : (costPercentVal > 50 ? 'low' : ''));
         const roas = r.roas === null ? '—' : `${Number(r.roas).toFixed(2)}x`;
         const projectList = Array.isArray(r.projects) ? r.projects : [];
         const projects = projectList.length
@@ -228,7 +231,7 @@
           <td>${App.fmtDate(r.last_donation)}</td>
           <td style="min-width:150px"><input class="field cost-input" type="number" min="0" step="0.01" data-idx="${i}" value="${costVal}" placeholder="0.00" /></td>
           <td>${App.fmtMoney(r.net_return)} ر.س</td>
-          <td><span class="roi-chip ${Number(r.roi_percent || 0) >= 0 ? 'good' : 'low'}">${roi}</span></td>
+          <td><span class="roi-chip ${costPercentClass}">${costPercent}</span></td>
           <td><span class="roi-chip ${r.roas === null ? '' : 'good'}">${roas}</span></td>
           <td><button class="btn-x btn-sm save-cost-btn" data-idx="${i}"><i class="fa-solid fa-floppy-disk"></i> حفظ</button></td>
         </tr>`;
@@ -246,7 +249,7 @@
           <th>آخر تبرع</th>
           <th>التكلفة</th>
           <th>صافي العائد</th>
-          <th>نسبة العائد</th>
+          <th>نسبة التكلفة من العوائد</th>
           <th>ROAS</th>
           <th>إجراء</th>
         </tr></thead>
@@ -326,7 +329,7 @@
         'آخر تبرع': App.fmtDate(r.last_donation),
         'التكلفة': r.cost,
         'صافي العائد': r.net_return,
-        'نسبة العائد %': r.roi_percent === null ? '' : Number(r.roi_percent).toFixed(2),
+        'نسبة التكلفة من العوائد %': r.cost_revenue_percent === null ? '' : Number(r.cost_revenue_percent).toFixed(2),
         'ROAS': r.roas === null ? '' : Number(r.roas).toFixed(2),
       }));
       App.downloadCsv('referral-code-analysis.csv', rows);

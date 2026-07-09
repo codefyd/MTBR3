@@ -128,7 +128,7 @@ as $$
     coalesce(c.cost, 0)::numeric as cost,
     (a.total_amount - coalesce(c.cost, 0))::numeric as net_return,
     case when coalesce(c.cost, 0) > 0 then round((a.total_amount / c.cost)::numeric, 4) else null end as roas,
-    case when coalesce(c.cost, 0) > 0 then round(((a.total_amount - c.cost) / c.cost * 100)::numeric, 2) else null end as roi_percent
+    case when a.total_amount > 0 then round((coalesce(c.cost, 0) / a.total_amount * 100)::numeric, 2) else null end as roi_percent
   from agg a
   left join public.referral_code_costs c on c.referral_code = a.code
   order by a.total_amount desc, a.unique_donors desc, a.code;
