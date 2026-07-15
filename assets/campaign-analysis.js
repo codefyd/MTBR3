@@ -71,7 +71,7 @@
 
   function bindPageEvents() {
     document.getElementById('newCampaignBtn').addEventListener('click', () => openBuilder());
-    document.getElementById('refreshCampaignsBtn').addEventListener('click', loadCampaigns);
+    document.getElementById('refreshCampaignsBtn').addEventListener('click', refreshAnalysisCache);
     document.getElementById('exportCampaignsBtn').addEventListener('click', exportCampaigns);
     document.getElementById('resetFiltersBtn').addEventListener('click', resetFilters);
     document.getElementById('viewSwitch').addEventListener('click', e => {
@@ -123,10 +123,41 @@
       renderSummary();
       renderCampaigns();
     } catch (e) {
-      if (isSchemaMissing(e)) renderSchemaNotice();
-      else if (isStatementTimeout(e)) renderPerformanceNotice();
+      if (isStatementTimeout(e)) renderPerformanceNotice();
+      else if (isSchemaMissing(e)) renderSchemaNotice();
       document.getElementById('campaignList').innerHTML = emptyBlock('تعذّر تحميل الحملات', e.message || 'تحقق من تثبيت ملف SQL.');
     } finally { state.loading = false; }
+  }
+
+  async function refreshAnalysisCache() {
+    const btn=document.getElementById('refreshCampaignsBtn');
+    if(!btn||btn.disabled)return;
+    const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span class="spinner-x"></span> فحص النتائج';
+    try {
+      const {data,error}=await App.sb.rpc('marketing_campaign_analysis_pending');
+      if(error)throw error;
+      const pending=data||[];
+      for(let i=0;i<pending.length;i+=1){
+        const row=pending[i];
+        btn.innerHTML=`<span class="spinner-x"></span> تحديث ${App.fmtNum(i+1)} من ${App.fmtNum(pending.length)}`;
+        const {error:refreshError}=await App.sb.rpc('refresh_marketing_campaign_analysis_cache',{p_campaign_id:row.campaign_id});
+        if(refreshError){
+          const message=`تعذر تحديث حملة «${row.campaign_name||''}»: ${refreshError.message||'خطأ غير معروف'}`;
+          throw Object.assign(new Error(message),{code:refreshError.code});
+        }
+      }
+      App.toast(pending.length?`تم تحديث تحليل ${App.fmtNum(pending.length)} حملة.`:'التحليل محدث بالفعل.','ok');
+      await loadCampaigns();
+    }catch(e){
+      if(isStatementTimeout(e)) renderPerformanceNotice();
+      else if(isSchemaMissing(e)) renderPerformanceNotice();
+      App.toast(e.message||'تعذر تحديث التحليل.','err');
+    }finally{btn.disabled=false;btn.innerHTML=old;}
+  }
+
+  async function refreshOneCampaign(id) {
+    const {error}=await App.sb.rpc('refresh_marketing_campaign_analysis_cache',{p_campaign_id:id});
+    if(error)throw error;
   }
 
   function normalizeCampaign(r) {
@@ -475,7 +506,9 @@
     try {
       const wasEditing = Boolean(state.draft.id);
       const {data,error}=await App.sb.rpc('save_marketing_campaign',{p_payload:state.draft});if(error)throw error;
-      const id=data;closeBuilder();App.toast(wasEditing?'تم تحديث الحملة.':'تم إنشاء الحملة.','ok');await loadCampaigns();await openDetail(id);
+      const id=data;closeBuilder();App.toast(wasEditing?'تم تحديث الحملة.':'تم إنشاء الحملة.','ok');
+      try{await refreshOneCampaign(id);}catch(refreshError){App.toast('تم الحفظ، لكن تعذر تحديث النتيجة الآن. اضغط «تحديث التحليل».','err');}
+      await loadCampaigns();await openDetail(id);
     }catch(e){App.toast(e.message||'تعذر حفظ الحملة','err');btn.disabled=false;btn.innerHTML=old;}
   }
 
@@ -504,8 +537,8 @@
   function exportCampaigns(){if(!state.campaigns.length){App.toast('لا توجد حملات للتصدير.','err');return;}App.downloadCsv('marketing-campaigns-analysis.csv',state.campaigns.map(c=>({'الحملة':c.name,'الطبيعة':labels.nature[c.nature]||c.nature,'القناة':c.channel,'الحالة':labels.status[c.status]||c.status,'البداية':c.start_date,'النهاية':c.end_date||'مستمرة','العوائد المنسوبة':c.total_amount,'عدد العمليات':c.donations_count,'المتبرعون الفريدون':c.unique_donors,'التكلفة':c.total_cost,'صافي العائد':c.net_return,'ROAS':c.roas??'','نسبة التكلفة من العوائد':c.cost_revenue_percent??'','متبرعون جدد':c.new_donors,'متبرعون سابقون':c.returning_donors,'المستهدفون':c.targeted_count,'المستجيبون':c.respondents_count})));}
 
   function renderSchemaNotice(){document.getElementById('schemaNotice').innerHTML=`<div class="ca-install"><i class="fa-solid fa-screwdriver-wrench"></i><div><b>يلزم تثبيت محرك تحليل الحملات الجديد</b><div>شغّل الملف <span dir="ltr">supabase/campaign_analysis_v2.sql</span> مرة واحدة في SQL Editor، ثم حدّث الصفحة.</div></div></div>`;}
-  function renderPerformanceNotice(){document.getElementById('schemaNotice').innerHTML=`<div class="ca-install"><i class="fa-solid fa-gauge-high"></i><div><b>يلزم تثبيت تحسين الأداء v2.2</b><div>شغّل الملف <span dir="ltr">supabase/campaign_analysis_v2_2_cache_fix.sql</span> مرة واحدة في SQL Editor، وانتظر رسالة Success ثم اضغط تحديث التحليل.</div></div></div>`;}
-  function isSchemaMissing(e){return ['PGRST202','42883','42P01'].includes(e?.code)||/marketing_campaign|schema cache|function/i.test(e?.message||'');}
+  function renderPerformanceNotice(){document.getElementById('schemaNotice').innerHTML=`<div class="ca-install"><i class="fa-solid fa-gauge-high"></i><div><b>يلزم تثبيت ذاكرة النتائج v2.3</b><div>شغّل الملف <span dir="ltr">supabase/campaign_analysis_v2_3_result_cache.sql</span> كاملًا في SQL Editor، وانتظر رسالة Success ثم اضغط تحديث التحليل.</div></div></div>`;}
+  function isSchemaMissing(e){return ['PGRST202','42883','42P01'].includes(e?.code)||/schema cache|could not find the function|does not exist/i.test(e?.message||'');}
   function isStatementTimeout(e){return e?.code==='57014'||/statement timeout|canceling statement/i.test(e?.message||'');}
   function loadingBlock(text){return `<div class="panel center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div><div class="muted" style="margin-top:.65rem">${text}</div></div>`;}
   function emptyBlock(title,msg=''){return `<div class="panel ca-empty"><div class="orb"><i class="fa-solid fa-triangle-exclamation"></i></div><h3>${App.esc(title)}</h3><p>${App.esc(msg)}</p></div>`;}
