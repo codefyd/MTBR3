@@ -28,6 +28,7 @@
       <div class="topbar">
         <h1><i class="fa-solid fa-chart-simple text-gold"></i> ذكاء الحملات التسويقية</h1>
         <div class="ca-top-actions">
+          <button class="btn-x btn-ghost btn-sm" id="refreshCampaignsBtn"><i class="fa-solid fa-rotate"></i> تحديث التحليل</button>
           <button class="btn-x btn-ghost btn-sm" id="exportCampaignsBtn"><i class="fa-solid fa-file-export"></i> تصدير</button>
           <button class="btn-x btn-sm" id="newCampaignBtn"><i class="fa-solid fa-plus"></i> حملة جديدة</button>
         </div>
@@ -70,6 +71,7 @@
 
   function bindPageEvents() {
     document.getElementById('newCampaignBtn').addEventListener('click', () => openBuilder());
+    document.getElementById('refreshCampaignsBtn').addEventListener('click', loadCampaigns);
     document.getElementById('exportCampaignsBtn').addEventListener('click', exportCampaigns);
     document.getElementById('resetFiltersBtn').addEventListener('click', resetFilters);
     document.getElementById('viewSwitch').addEventListener('click', e => {
@@ -122,6 +124,7 @@
       renderCampaigns();
     } catch (e) {
       if (isSchemaMissing(e)) renderSchemaNotice();
+      else if (isStatementTimeout(e)) renderPerformanceNotice();
       document.getElementById('campaignList').innerHTML = emptyBlock('تعذّر تحميل الحملات', e.message || 'تحقق من تثبيت ملف SQL.');
     } finally { state.loading = false; }
   }
@@ -501,7 +504,9 @@
   function exportCampaigns(){if(!state.campaigns.length){App.toast('لا توجد حملات للتصدير.','err');return;}App.downloadCsv('marketing-campaigns-analysis.csv',state.campaigns.map(c=>({'الحملة':c.name,'الطبيعة':labels.nature[c.nature]||c.nature,'القناة':c.channel,'الحالة':labels.status[c.status]||c.status,'البداية':c.start_date,'النهاية':c.end_date||'مستمرة','العوائد المنسوبة':c.total_amount,'عدد العمليات':c.donations_count,'المتبرعون الفريدون':c.unique_donors,'التكلفة':c.total_cost,'صافي العائد':c.net_return,'ROAS':c.roas??'','نسبة التكلفة من العوائد':c.cost_revenue_percent??'','متبرعون جدد':c.new_donors,'متبرعون سابقون':c.returning_donors,'المستهدفون':c.targeted_count,'المستجيبون':c.respondents_count})));}
 
   function renderSchemaNotice(){document.getElementById('schemaNotice').innerHTML=`<div class="ca-install"><i class="fa-solid fa-screwdriver-wrench"></i><div><b>يلزم تثبيت محرك تحليل الحملات الجديد</b><div>شغّل الملف <span dir="ltr">supabase/campaign_analysis_v2.sql</span> مرة واحدة في SQL Editor، ثم حدّث الصفحة.</div></div></div>`;}
+  function renderPerformanceNotice(){document.getElementById('schemaNotice').innerHTML=`<div class="ca-install"><i class="fa-solid fa-gauge-high"></i><div><b>يلزم تثبيت تحسين الأداء v2.1</b><div>شغّل الملف <span dir="ltr">supabase/campaign_analysis_v2_1_performance_fix.sql</span> مرة واحدة في SQL Editor، ثم اضغط تحديث التحليل.</div></div></div>`;}
   function isSchemaMissing(e){return ['PGRST202','42883','42P01'].includes(e?.code)||/marketing_campaign|schema cache|function/i.test(e?.message||'');}
+  function isStatementTimeout(e){return e?.code==='57014'||/statement timeout|canceling statement/i.test(e?.message||'');}
   function loadingBlock(text){return `<div class="panel center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div><div class="muted" style="margin-top:.65rem">${text}</div></div>`;}
   function emptyBlock(title,msg=''){return `<div class="panel ca-empty"><div class="orb"><i class="fa-solid fa-triangle-exclamation"></i></div><h3>${App.esc(title)}</h3><p>${App.esc(msg)}</p></div>`;}
   function numberObject(obj){const out={...(obj||{})};Object.keys(out).forEach(k=>{if(out[k]!==null&&out[k]!==''&&!Number.isNaN(Number(out[k])))out[k]=Number(out[k]);});return out;}
