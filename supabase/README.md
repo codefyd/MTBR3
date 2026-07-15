@@ -24,6 +24,7 @@
 - للمشروع القائم: شغّل `campaign_analysis_v2.sql` مرة واحدة لإضافة الحملات والتكاليف ومحرك المطابقة والتحليل دون التأثير على العمليات الحالية.
 - `campaign_analysis.sql` هو الإصدار السابق الخاص بتحليل الأكواد، وقد أُبقي للتوافق فقط.
 - بعد `campaign_analysis_v2.sql` شغّل `campaign_analysis_v2_1_performance_fix.sql` لتثبيت تحسين الأداء ومنع انتهاء مهلة التحليل على قواعد البيانات الكبيرة.
+- إذا استمرت المهلة، شغّل `campaign_analysis_v2_2_cache_fix.sql`. هذا هو الإصدار المعتمد للقواعد الكبيرة؛ يبني جدول `campaign_operation_facts` ويحافظ عليه تلقائيًا.
 
 ### ماذا يضيف `campaign_analysis_v2.sql`؟
 
