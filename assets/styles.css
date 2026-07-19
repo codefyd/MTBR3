@@ -731,6 +731,19 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
   .day-campaign-card { padding: .75rem; }
   #finalUrl { min-width: 0; }
 }
+
+/* SaaS: سياق الجهة ولوحة إدارة المنصة */
+.tenant-badge{margin:0 1rem 1rem;padding:.8rem .9rem;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.06);display:grid;gap:.2rem}
+.tenant-badge strong{font-size:.92rem;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tenant-badge span{font-size:.76rem;color:#b8d0cb}
+.admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
+.admin-card{border:1px solid var(--c-line);border-radius:var(--radius-md);padding:1rem;background:#fff}
+.admin-card h3{font-size:1rem;margin:0 0 .7rem}
+.permission-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.55rem}
+.permission-item{display:flex;align-items:center;gap:.45rem;padding:.55rem .65rem;border:1px solid var(--c-line);border-radius:9px;background:var(--c-bg)}
+.secret-box{direction:ltr;text-align:left;padding:.8rem;border-radius:9px;background:#112f2b;color:#dff5f0;word-break:break-all;font-family:monospace}
+.status-pill{display:inline-flex;align-items:center;padding:.22rem .55rem;border-radius:999px;font-size:.76rem;background:#e5f3ef;color:#165c50}
+.status-pill.expired{background:#f8e5e2;color:#9d3126}
 @media (max-width: 430px) {
   .calendar-inner { min-width: 590px; }
   .calendar-cell { min-height: 86px; }

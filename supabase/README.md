@@ -1,5 +1,18 @@
 # ملفات Supabase المعتمدة
 
+## ترقية SaaS 3.0 للمشروع الحالي
+
+بعد نجاح ملفات تحليل الحملات حتى `campaign_analysis_v2_4_targets_delete_timeout_fix.sql`، شغّل:
+
+`saas_upgrade.sql`
+
+ثم انشر Edge Functions:
+
+- `functions/saas-admin/index.ts` مع Verify JWT مفعّل.
+- `functions/mcp/index.ts` مع Verify JWT معطّل، لأن الوظيفة تستخدم مفاتيح MCP مستقلة وتتحقق من SHA-256 داخلها.
+
+هذا الملف ينقل البيانات الحالية إلى جهة افتراضية واحدة ولا يحذف العمليات أو المتبرعين.
+
 ## `schema.sql`
 
 هذا هو ملف القاعدة النظيف للمشروع الجديد. شغّله كاملًا مرة واحدة في Supabase SQL Editor.
@@ -26,6 +39,7 @@
 - بعد `campaign_analysis_v2.sql` شغّل `campaign_analysis_v2_1_performance_fix.sql` لتثبيت تحسين الأداء ومنع انتهاء مهلة التحليل على قواعد البيانات الكبيرة.
 - إذا استمرت المهلة، شغّل `campaign_analysis_v2_2_cache_fix.sql`؛ فهو يبني جدول `campaign_operation_facts` ويحافظ عليه تلقائيًا.
 - إذا نجح v2.2 وتساوى عدد العمليات والملخصات لكن بقيت مهلة قائمة الحملات، شغّل `campaign_analysis_v2_3_result_cache.sql`. يبني نتيجة كل حملة مرة واحدة، ثم يجعل دالتي القائمة والتفاصيل تقرآن النتائج المحفوظة فورًا. انتظر `Success` في التشغيل الأول قبل تحديث الصفحة.
+- بعد v2.3 شغّل `campaign_analysis_v2_4_targets_delete_timeout_fix.sql` لإصلاح حذف الحملة، وربط تغييرات المستهدفين بذاكرة التحليل، ومنح تحديث الحملة الكبيرة مهلة خاصة قدرها 55 ثانية.
 
 ### ماذا يضيف `campaign_analysis_v2.sql`؟
 

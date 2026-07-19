@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>غير مصرح | ولاء</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <main style="min-height:100vh;display:grid;place-items:center;padding:1.5rem">
+    <section class="panel" style="max-width:520px;padding:2rem;text-align:center">
+      <h1 style="font-size:1.5rem">لا تملك صلاحية لهذه الصفحة</h1>
+      <p class="muted">يمكن لمدير المنصة تعديل الصفحات المتاحة لحسابك.</p>
+      <a id="backBtn" class="btn-x" href="index.html">العودة للصفحة المتاحة</a>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    (async()=>{try{document.getElementById('backBtn').href=App.startPage(await App.loadAccessContext());}catch(_){}})();
+  </script>
+</body>
+</html>

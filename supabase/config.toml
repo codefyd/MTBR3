@@ -1,0 +1,5 @@
+[functions.saas-admin]
+verify_jwt = true
+
+[functions.mcp]
+verify_jwt = false

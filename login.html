@@ -49,12 +49,16 @@
     const btn = document.getElementById('loginBtn');
     const errBox = document.getElementById('errBox');
 
-    const idleLogout = new URLSearchParams(location.search).get('idle') === '1' || sessionStorage.getItem('mtbr:idleLogout') === '1';
+    const params = new URLSearchParams(location.search);
+    const idleLogout = params.get('idle') === '1' || sessionStorage.getItem('mtbr:idleLogout') === '1';
     if (idleLogout) {
       sessionStorage.removeItem('mtbr:idleLogout');
-      errBox.textContent = 'تم تسجيل خروجك تلقائيًا بسبب الخمول لمدة 3 دقائق.';
+      errBox.textContent = 'تم تسجيل خروجك تلقائيًا بسبب الخمول لمدة 6 دقائق.';
       errBox.classList.remove('hidden');
       history.replaceState(null, '', location.pathname);
+    } else if (params.get('error')) {
+      errBox.textContent = params.get('error');
+      errBox.classList.remove('hidden');
     }
 
     form.addEventListener('submit', async (e) => {
@@ -73,7 +77,15 @@
         btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i><span>دخول</span>';
         return;
       }
-      location.href = 'dashboard.html';
+      try {
+        location.href = App.startPage(await App.loadAccessContext(true));
+      } catch (_) {
+        await App.sb.auth.signOut();
+        errBox.textContent = 'الحساب غير مرتبط بجهة فعّالة. راجع مدير المنصة.';
+        errBox.classList.remove('hidden');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i><span>دخول</span>';
+      }
     });
   </script>
 </body>

@@ -9,6 +9,30 @@ window.sb = sb;
 
 // ------- حارس المصادقة -------
 // page: 'login' لصفحة الدخول، أو 'app' لصفحات اللوحة
+let _accessContextPromise = null;
+
+async function loadAccessContext(force = false) {
+  if (force) _accessContextPromise = null;
+  if (!_accessContextPromise) {
+    _accessContextPromise = (async () => {
+      const { data, error } = await sb.rpc('get_my_access_context');
+      if (error) throw error;
+      return data || {};
+    })().catch(error => {
+      _accessContextPromise = null;
+      throw error;
+    });
+  }
+  return _accessContextPromise;
+}
+
+function startPage(context) {
+  if (context?.is_platform_admin && !context?.organization) return 'admin.html';
+  const allowed = new Set(context?.allowed_pages || []);
+  return NAV.find(item => allowed.has(item.key))?.href
+    || (context?.is_platform_admin ? 'admin.html' : 'access-denied.html');
+}
+
 async function guard(page) {
   const { data: { session } } = await sb.auth.getSession();
   if (page === 'app' && !session) {
@@ -16,7 +40,12 @@ async function guard(page) {
     return null;
   }
   if (page === 'login' && session) {
-    location.href = 'dashboard.html';
+    try {
+      const context = await loadAccessContext();
+      location.href = startPage(context);
+    } catch (_) {
+      location.href = 'dashboard.html';
+    }
     return null;
   }
   return session;
@@ -24,32 +53,49 @@ async function guard(page) {
 
 // ------- الشريط الجانبي -------
 const NAV = [
-  { href: 'dashboard.html', label: 'لوحة التحكم', icon: 'fa-chart-line' },
-  { href: 'reports.html', label: 'التقارير الشهرية والسنوية', icon: 'fa-chart-pie' },
-  { href: 'targets.html', label: 'المستهدفات اليومية', icon: 'fa-bullseye' },
-  { href: 'donors.html', label: 'ملفات المتبرعين', icon: 'fa-users' },
-  { href: 'operations.html', label: 'العمليات', icon: 'fa-receipt' },
-  { href: 'campaign-analysis.html', label: 'تحليل الحملات التسويقية', icon: 'fa-chart-simple' },
-  { href: 'campaigns.html', label: 'المستهدفين في الحملات', icon: 'fa-bullhorn' },
-  { href: 'marketing-content.html', label: 'المحتوى التسويقي', icon: 'fa-calendar-days' },
-  { href: 'settings.html', label: 'الإعدادات', icon: 'fa-gear' },
+  { key: 'dashboard', href: 'dashboard.html', label: 'لوحة التحكم', icon: 'fa-chart-line' },
+  { key: 'reports', href: 'reports.html', label: 'التقارير الشهرية والسنوية', icon: 'fa-chart-pie' },
+  { key: 'targets', href: 'targets.html', label: 'المستهدفات اليومية', icon: 'fa-bullseye' },
+  { key: 'donors', href: 'donors.html', label: 'ملفات المتبرعين', icon: 'fa-users' },
+  { key: 'operations', href: 'operations.html', label: 'العمليات', icon: 'fa-receipt' },
+  { key: 'campaign_analysis', href: 'campaign-analysis.html', label: 'تحليل الحملات التسويقية', icon: 'fa-chart-simple' },
+  { key: 'campaign_targets', href: 'campaigns.html', label: 'المستهدفين في الحملات', icon: 'fa-bullhorn' },
+  { key: 'marketing_content', href: 'marketing-content.html', label: 'المحتوى التسويقي', icon: 'fa-calendar-days' },
+  { key: 'settings', href: 'settings.html', label: 'الإعدادات', icon: 'fa-gear' },
 ];
 
-function renderSidebar(activeHref, userEmail) {
-  const links = NAV.map(n => `
+function renderSidebar(activeHref, userEmail, context) {
+  const allowed = new Set(context?.allowed_pages || []);
+  const visibleNav = NAV.filter(n => allowed.has(n.key));
+  if (context?.is_platform_admin) {
+    visibleNav.push({ key: 'admin', href: 'admin.html', label: 'إدارة المنصة', icon: 'fa-building-shield' });
+  }
+  const links = visibleNav.map(n => `
     <a href="${n.href}" class="nav-link-x ${n.href === activeHref ? 'active' : ''}">
       <i class="fa-solid ${n.icon}"></i><span>${n.label}</span>
     </a>`).join('');
 
+  const organizationName = context?.organization?.name || 'إدارة المنصة';
+  const subscriptionText = context?.organization?.subscription_ends_at
+    ? `الاشتراك حتى ${fmtDate(context.organization.subscription_ends_at)}`
+    : (context?.organization ? 'اشتراك غير محدد المدة' : 'حساب مدير المنصة');
+
   return `
     <div class="overlay hidden" id="ovl"></div>
     <aside class="sidebar" id="sidebar">
-      <div class="brand"><i class="fa-solid fa-hand-holding-heart"></i><span>المتبرعون</span></div>
+      <div class="brand"><i class="fa-solid fa-hand-holding-heart"></i><span>ولاء</span></div>
+      <div class="tenant-badge">
+        <strong>${esc(organizationName)}</strong>
+        <span>${esc(subscriptionText)}</span>
+      </div>
       <nav style="flex:1">${links}</nav>
       <div class="sidebar-footer">
         <div style="padding:.75rem 1rem;font-size:.85rem;color:#a9c4be;border-top:1px solid rgba(255,255,255,.12);margin-bottom:.5rem;word-break:break-all">
           <i class="fa-solid fa-user-shield"></i> ${esc(userEmail || '')}
         </div>
+        <a class="nav-link-x" href="change-password.html">
+          <i class="fa-solid fa-key"></i><span>تغيير كلمة المرور</span>
+        </a>
         <div class="nav-link-x" id="logoutBtn" style="color:#f3c9c2">
           <i class="fa-solid fa-right-from-bracket"></i><span>تسجيل الخروج</span>
         </div>
@@ -128,12 +174,45 @@ function startIdleLogout() {
 async function initShell(activeHref) {
   const session = await guard('app');
   if (!session) return null;
+  let context;
+  try {
+    context = await loadAccessContext();
+  } catch (error) {
+    await sb.auth.signOut();
+    location.href = `login.html?error=${encodeURIComponent('تعذر التحقق من صلاحيات الحساب')}`;
+    return null;
+  }
+
+  const isAdminPage = activeHref === 'admin.html';
+  const isAccountPage = activeHref === 'change-password.html';
+  if (isAdminPage && !context?.is_platform_admin) {
+    location.href = 'access-denied.html';
+    return null;
+  }
+
+  if (!isAdminPage && !isAccountPage) {
+    if (!context?.organization) {
+      location.href = context?.is_platform_admin ? 'admin.html' : 'access-denied.html';
+      return null;
+    }
+    if (!context?.subscription_valid) {
+      location.href = 'subscription-ended.html';
+      return null;
+    }
+    const pageKey = NAV.find(item => item.href === activeHref)?.key;
+    if (pageKey && !(context.allowed_pages || []).includes(pageKey)) {
+      location.href = 'access-denied.html';
+      return null;
+    }
+  }
+
   const email = session.user?.email || '';
   document.getElementById('shell').innerHTML =
-    renderSidebar(activeHref, email) +
+    renderSidebar(activeHref, email, context) +
     `<div class="main-area" id="mainArea"></div>`;
   wireSidebar();
   startIdleLogout();
+  session.accessContext = context;
   return session;
 }
 
@@ -562,6 +641,6 @@ async function rpcInBatches(fnName, rows, batchSize = 500) {
 }
 
 window.App = {
-  sb, guard, initShell, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc, escFilter,
+  sb, guard, initShell, loadAccessContext, startPage, toast, fmtMoney, fmtNum, fmtDate, fmtDateTime, esc, escFilter,
   cleanPhone, operationPhoneKey, normalizePhone, toNum, toISO, pick, readCsv, downloadCsv, downloadCsvSections, rpcInBatches, rebuildDonorsInBatches, rebuildDonorsForPhones, PAGE_SIZE,
 };

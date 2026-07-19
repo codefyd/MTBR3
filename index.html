@@ -16,7 +16,15 @@
   <script>
     (async () => {
       const { data: { session } } = await App.sb.auth.getSession();
-      location.href = session ? 'dashboard.html' : 'login.html';
+      if (!session) {
+        location.href = 'login.html';
+        return;
+      }
+      try {
+        location.href = App.startPage(await App.loadAccessContext());
+      } catch (_) {
+        location.href = 'login.html';
+      }
     })();
   </script>
 </body>
