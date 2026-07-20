@@ -19,14 +19,14 @@
     if (!session) return;
     renderPage();
     bindPageEvents();
-    await loadReferences();
-    await loadCampaigns();
+    renderInitialLoading();
+    await Promise.all([loadReferences(), loadCampaigns()]);
   }
 
   function renderPage() {
     document.getElementById('mainArea').innerHTML = `
       <div class="topbar">
-        <h1><i class="fa-solid fa-chart-simple text-gold"></i> ذكاء الحملات التسويقية</h1>
+        <h1><i class="fa-solid fa-chart-simple text-gold"></i> تحليل الحملات التسويقية</h1>
         <div class="ca-top-actions">
           <button class="btn-x btn-ghost btn-sm" id="refreshCampaignsBtn"><i class="fa-solid fa-rotate"></i> تحديث التحليل</button>
           <button class="btn-x btn-ghost btn-sm" id="exportCampaignsBtn"><i class="fa-solid fa-file-export"></i> تصدير</button>
@@ -37,7 +37,6 @@
         <section class="ca-hero fade-in">
           <div class="ca-hero-content">
             <div>
-              <div class="ca-eyebrow">CAMPAIGN INTELLIGENCE</div>
               <h2>من الإنفاق إلى الأثر… كل حملة قابلة للقياس</h2>
               <p>اربط العوائد بالأكواد والمشاريع والفترة الزمنية، ثم اقرأ أثر الحملة على الإيرادات والمتبرعين والاستجابة من مكان واحد.</p>
             </div>
@@ -114,7 +113,12 @@
   async function loadCampaigns() {
     if (state.loading) return;
     state.loading = true;
-    document.getElementById('campaignList').innerHTML = loadingBlock('جارٍ تحليل الحملات…');
+    const area = document.getElementById('campaignList');
+    area.innerHTML = campaignTableLoading('جارٍ جلب الحملات ونتائجها…');
+    const progressTimer = setTimeout(() => {
+      const label = document.getElementById('campaignLoadStatus');
+      if (label) label.textContent = 'جارٍ قراءة النتائج المحفوظة وترتيب الجدول…';
+    }, 1200);
     try {
       const { data, error } = await App.sb.rpc('marketing_campaign_analysis_list', currentFilters());
       if (error) throw error;
@@ -125,8 +129,8 @@
     } catch (e) {
       if (isStatementTimeout(e)) renderPerformanceNotice();
       else if (isSchemaMissing(e)) renderSchemaNotice();
-      document.getElementById('campaignList').innerHTML = emptyBlock('تعذّر تحميل الحملات', e.message || 'تحقق من تثبيت ملف SQL.');
-    } finally { state.loading = false; }
+      area.innerHTML = emptyBlock('تعذّر تحميل الحملات', e.message || 'تحقق من تثبيت ملف SQL.');
+    } finally { clearTimeout(progressTimer); state.loading = false; }
   }
 
   async function refreshAnalysisCache() {
@@ -189,20 +193,35 @@
       area.innerHTML = `<div class="panel ca-empty"><div class="orb"><i class="fa-solid fa-bullhorn"></i></div><h3>ابدأ بأول حملة قابلة للقياس</h3><p>أنشئ حملة وحدد الأكواد أو المشاريع المرتبطة بها، وسيتولى النظام قراءة النتائج.</p><button class="btn-x" onclick="document.getElementById('newCampaignBtn').click()"><i class="fa-solid fa-plus"></i> إنشاء حملة</button></div>`;
       return;
     }
-    area.innerHTML = `<div class="ca-campaign-grid">${state.campaigns.map(campaignCard).join('')}</div>`;
+    area.innerHTML = `<div class="ca-campaign-table-wrap"><table class="ca-campaign-table">
+      <thead><tr><th>الحملة</th><th>الحالة</th><th>الفترة</th><th>العوائد</th><th>التكلفة</th><th>صافي العائد</th><th>المتبرعون</th><th>ROAS</th><th aria-label="فتح"></th></tr></thead>
+      <tbody>${state.campaigns.map(campaignRow).join('')}</tbody>
+    </table></div>`;
   }
 
-  function campaignCard(c) {
-    const progress = c.target_amount > 0 ? Math.min(100, c.total_amount / c.target_amount * 100) : 0;
+  function campaignRow(c) {
     const roas = c.roas == null ? '—' : `${c.roas.toFixed(2)}x`;
     const date = `${App.fmtDate(c.start_date)} — ${c.end_date ? App.fmtDate(c.end_date) : 'مستمرة'}`;
-    return `<article class="ca-campaign-card" data-campaign-id="${c.id}">
-      <div class="ca-card-accent"></div><div class="ca-card-body">
-        <div class="ca-card-head"><div><h3 class="ca-card-title">${App.esc(c.name)}</h3><div class="ca-card-meta"><span><i class="fa-solid fa-tower-broadcast"></i> ${App.esc(c.channel)}</span><span><i class="fa-regular fa-calendar"></i> ${date}</span></div></div><span class="ca-status ${c.status}">${labels.status[c.status] || c.status}</span></div>
-        <div class="ca-card-revenue"><small>العوائد المنسوبة</small><strong>${App.fmtMoney(c.total_amount)} <small>ر.س</small></strong></div>
-        <div class="ca-card-stats"><div><span>العمليات</span><b>${App.fmtNum(c.donations_count)}</b></div><div><span>المتبرعون</span><b>${App.fmtNum(c.unique_donors)}</b></div><div><span>ROAS</span><b>${roas}</b></div></div>
-        ${c.target_amount > 0 ? `<div class="ca-progress" title="تحقيق الهدف ${progress.toFixed(1)}%"><span style="width:${progress}%"></span></div>` : ''}
-      </div></article>`;
+    return `<tr data-campaign-id="${c.id}" tabindex="0">
+      <td><strong>${App.esc(c.name)}</strong><small><i class="fa-solid fa-tower-broadcast"></i> ${App.esc(c.channel)}</small></td>
+      <td><span class="ca-status ${c.status}">${labels.status[c.status] || c.status}</span></td>
+      <td class="ca-date-cell">${date}</td>
+      <td><b>${App.fmtMoney(c.total_amount)}</b> <small>ر.س</small></td>
+      <td>${App.fmtMoney(c.total_cost)} <small>ر.س</small></td>
+      <td class="${c.net_return < 0 ? 'ca-negative' : 'ca-positive'}"><b>${App.fmtMoney(c.net_return)}</b> <small>ر.س</small></td>
+      <td>${App.fmtNum(c.unique_donors)}</td><td><b>${roas}</b></td>
+      <td><i class="fa-solid fa-chevron-left ca-row-arrow"></i></td>
+    </tr>`;
+  }
+
+  function renderInitialLoading() {
+    document.getElementById('campaignSummary').innerHTML = Array.from({length:5}, () => '<div class="ca-mini-kpi ca-skeleton-card"><span></span><span></span></div>').join('');
+    document.getElementById('campaignList').innerHTML = campaignTableLoading('جارٍ جلب الحملات ونتائجها…');
+  }
+
+  function campaignTableLoading(text) {
+    const rows = Array.from({length:5}, () => '<tr class="ca-skeleton-row"><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td><td></td></tr>').join('');
+    return `<div class="ca-load-state"><span class="spinner-x spinner-dark"></span><span id="campaignLoadStatus">${text}</span></div><div class="ca-campaign-table-wrap"><table class="ca-campaign-table"><thead><tr><th>الحملة</th><th>الحالة</th><th>الفترة</th><th>العوائد</th><th>التكلفة</th><th>صافي العائد</th><th>المتبرعون</th><th>ROAS</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   async function openDetail(id) {
