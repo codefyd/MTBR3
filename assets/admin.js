@@ -48,6 +48,15 @@
       <div class="page-head"><div><h1>إدارة منصة ولاء</h1><p>الجمعيات والمستخدمون والاشتراكات وروابط MCP من مكان واحد.</p></div>
         <button class="btn-x btn-outline-x" id="refreshAdmin"><i class="fa-solid fa-rotate"></i> تحديث</button></div>
 
+      <section class="panel mcp-direct-panel">
+        <div>
+          <h2>الربط المباشر مع ChatGPT وClaude</h2>
+          <p class="muted">رابط OAuth موحّد؛ المستخدم يسجل دخوله، ثم يطبّق النظام جمعيته وصلاحيات صفحاته تلقائيًا.</p>
+          <div class="secret-box" id="oauthMcpUrl">${App.esc(state.mcp_url || window.APP_CONFIG.MCP_PUBLIC_URL || '')}</div>
+        </div>
+        <button class="btn-x" id="copyOAuthMcpUrl"><i class="fa-solid fa-link"></i> نسخ رابط MCP</button>
+      </section>
+
       <section class="panel" style="padding:1.25rem;margin-bottom:1rem">
         <h2 style="font-size:1.15rem">إضافة جمعية جديدة</h2>
         <form id="createOrgForm">
@@ -69,7 +78,7 @@
       <div class="modal-x hidden" id="secretModal"><div class="modal-card" style="max-width:700px">
         <div class="modal-head"><h3>بيانات ربط MCP</h3><button class="icon-btn" data-close-secret><i class="fa-solid fa-xmark"></i></button></div>
         <p class="muted">المفتاح يظهر مرة واحدة فقط. انسخه الآن واحفظه في مدير أسرار.</p>
-        <div class="mcp-note"><strong>تنبيه:</strong> فتح الرابط في المتصفح أو لصقه وحده لا يُنشئ اتصالًا. يجب أن يرسل عميل MCP المفتاح داخل ترويسة <span dir="ltr">Authorization: Bearer</span>.</div>
+        <div class="mcp-note"><strong>هذا ربط تقني اختياري:</strong> استخدمه للعملاء التي تدعم ترويسة <span dir="ltr">Authorization: Bearer</span>. أما ChatGPT وClaude فاستخدم لهما رابط OAuth الظاهر أعلى الصفحة دون هذا المفتاح.</div>
         <label class="lbl">رابط Streamable HTTP</label><div class="secret-box" id="mcpUrl"></div>
         <label class="lbl" style="margin-top:.8rem">مفتاح Bearer</label><div class="secret-box" id="mcpSecret"></div>
         <div class="modal-actions">
@@ -78,7 +87,7 @@
           <button class="btn-x btn-outline-x" id="testMcpConnection"><i class="fa-solid fa-plug-circle-check"></i> اختبار الاتصال</button>
         </div>
         <div class="mcp-test-result hidden" id="mcpTestResult" role="status"></div>
-        <p class="muted" style="margin:.9rem 0 0">للعملاء الذين لا يسمحون بإضافة ترويسة مخصصة—ومنهم ربط ChatGPT عبر رابط فقط—يلزم مسار OAuth 2.1، ولا ينبغي وضع المفتاح داخل الرابط.</p>
+        <p class="muted" style="margin:.9rem 0 0">لا تضع المفتاح داخل عنوان URL أو query string، وألغِه فورًا إذا انكشف.</p>
       </div></div>
       <div class="modal-x hidden" id="memberModal"><div class="modal-card" style="max-width:760px">
         <div class="modal-head"><h3>تعديل المستخدم</h3><button class="icon-btn" data-close-member><i class="fa-solid fa-xmark"></i></button></div>
@@ -125,7 +134,7 @@
             <button class="btn-x btn-sm" style="margin-top:.7rem">إضافة المستخدم</button>
           </form>
         </div>
-        <div class="admin-card"><h3>إنشاء مفتاح MCP</h3>
+        <div class="admin-card"><h3>مفتاح MCP تقني (اختياري)</h3>
           <form class="create-token-form">
             <input type="hidden" name="organization_id" value="${org.id}">
             <label class="lbl">اسم الاتصال</label><input class="field" name="name" placeholder="ChatGPT - التسويق" required>
@@ -148,6 +157,10 @@
 
   function wire() {
     document.getElementById('refreshAdmin').onclick = e => withBusy(e.currentTarget, 'جارٍ التحديث', () => load());
+    document.getElementById('copyOAuthMcpUrl').onclick = e => withBusy(e.currentTarget, 'جارٍ النسخ', async () => {
+      await navigator.clipboard.writeText(document.getElementById('oauthMcpUrl').textContent.trim());
+      App.toast('تم نسخ رابط MCP المباشر');
+    });
     document.getElementById('createOrgForm').onsubmit = async e => {
       e.preventDefault(); const f=e.currentTarget;
       await withBusy(submitButton(f), 'جارٍ إنشاء الجمعية', async () => {

@@ -774,9 +774,28 @@ th.sortable.sorted .sort-ind { color: var(--c-gold); }
 .mcp-note{padding:.75rem .9rem;border-radius:10px;background:var(--c-gold-lt);color:var(--c-ink);border:1px solid rgba(199,154,60,.35);margin:.75rem 0}
 .mcp-test-result{margin-top:.75rem;padding:.7rem .85rem;border-radius:10px;background:var(--c-primary-lt);color:var(--c-primary-dk)}
 .mcp-test-result.error{background:var(--c-gold-lt);color:var(--c-ink)}
+.mcp-direct-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:1rem;padding:1.25rem;margin-bottom:1rem;border-color:rgba(15,94,84,.28);background:linear-gradient(135deg,var(--c-surface),var(--c-primary-lt))}
+.mcp-direct-panel h2{font-size:1.15rem;margin:0 0 .25rem}
+.mcp-direct-panel p{margin:0 0 .75rem}
+.mcp-direct-panel .secret-box{max-width:820px}
 .loading-state{min-height:45vh;display:flex;align-items:center;justify-content:center;gap:.65rem;color:var(--c-ink-soft);padding:2rem}
 @media (max-width: 1180px){.admin-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width: 700px){.admin-grid,.form-grid{grid-template-columns:1fr}.admin-content{padding-top:3.5rem}.modal-actions .btn-x{width:100%;justify-content:center}}
+@media (max-width: 700px){.admin-grid,.form-grid,.mcp-direct-panel{grid-template-columns:1fr}.admin-content{padding-top:3.5rem}.modal-actions .btn-x,.mcp-direct-panel .btn-x{width:100%;justify-content:center}}
+
+/* OAuth 2.1: شاشة موافقة الربط المباشر مع عملاء MCP */
+.oauth-page{min-height:100vh;display:grid;place-items:center;padding:1.25rem}
+.oauth-card{width:min(100%,560px);padding:2rem;text-align:center}
+.oauth-brand{width:64px;height:64px;margin:0 auto 1rem;display:grid;place-items:center;border-radius:18px;background:var(--c-primary);color:var(--c-gold);font-size:1.8rem;font-weight:900;box-shadow:var(--shadow-md)}
+.oauth-card h1{font-size:1.55rem;margin:0 0 .5rem}
+.oauth-details{margin-top:1.25rem;text-align:start}
+.oauth-client-row{display:grid;grid-template-columns:110px minmax(0,1fr);gap:.75rem;padding:.7rem 0;border-bottom:1px solid var(--c-line)}
+.oauth-client-row span{color:var(--c-ink-soft)}
+.oauth-client-row strong{overflow-wrap:anywhere}
+.oauth-notice{margin-top:1rem;padding:.85rem 1rem;border:1px solid var(--c-line);border-radius:12px;background:var(--c-primary-lt);color:var(--c-primary-dk);line-height:1.65}
+.oauth-actions{display:flex;gap:.75rem;margin-top:1.25rem}
+.oauth-actions .btn-x{flex:1;justify-content:center}
+.oauth-error{margin-top:1rem;padding:.85rem 1rem;border-radius:12px;background:var(--c-gold-lt);color:var(--c-ink);text-align:start}
+@media (max-width:520px){.oauth-card{padding:1.35rem}.oauth-client-row{grid-template-columns:1fr;gap:.15rem}.oauth-actions{flex-direction:column}}
 @media (max-width: 430px) {
   .calendar-inner { min-width: 590px; }
   .calendar-cell { min-height: 86px; }

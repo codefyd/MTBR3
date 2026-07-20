@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' https://cdn.jsdelivr.net https://*.supabase.co wss://*.supabase.co; base-uri 'self'; form-action 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>الموافقة على ربط الذكاء الاصطناعي | ولاء</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <main class="oauth-page">
+    <section class="panel oauth-card fade-in" aria-labelledby="oauthTitle">
+      <div class="oauth-brand" aria-hidden="true">و</div>
+      <h1 id="oauthTitle">ربط ولاء بالذكاء الاصطناعي</h1>
+      <p class="muted" id="oauthStatus">جارٍ التحقق من طلب الربط...</p>
+
+      <div class="oauth-details hidden" id="oauthDetails">
+        <div class="oauth-client-row"><span>التطبيق</span><strong id="oauthClientName">—</strong></div>
+        <div class="oauth-client-row"><span>الجمعية</span><strong id="oauthOrganization">—</strong></div>
+        <div class="oauth-client-row"><span>الصلاحية</span><strong>قراءة البيانات المسموحة لحسابك فقط</strong></div>
+        <div class="oauth-notice">لن يحصل التطبيق على كلمة مرورك، ولن يستطيع تجاوز صلاحيات الصفحات أو حالة اشتراك الجمعية.</div>
+        <div class="oauth-actions">
+          <button class="btn-x" id="approveOAuth" type="button">السماح بالربط</button>
+          <button class="btn-x btn-outline-x" id="denyOAuth" type="button">رفض</button>
+        </div>
+      </div>
+
+      <div class="oauth-error hidden" id="oauthError" role="alert"></div>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.7"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script src="assets/oauth-consent.js"></script>
+</body>
+</html>

@@ -44,12 +44,29 @@
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
-    App.guard('login');
     const form = document.getElementById('loginForm');
     const btn = document.getElementById('loginBtn');
     const errBox = document.getElementById('errBox');
 
     const params = new URLSearchParams(location.search);
+    const requestedReturn = params.get('return');
+    const safeReturn = (() => {
+      if (!requestedReturn) return '';
+      try {
+        const target = new URL(requestedReturn, location.origin);
+        if (target.origin !== location.origin || !target.pathname.endsWith('/oauth-consent.html')) return '';
+        return `${target.pathname}${target.search}`;
+      } catch (_) { return ''; }
+    })();
+
+    if (safeReturn) {
+      App.sb.auth.getSession().then(({ data }) => {
+        if (data.session) location.replace(safeReturn);
+      });
+    } else {
+      App.guard('login');
+    }
+
     const idleLogout = params.get('idle') === '1' || sessionStorage.getItem('mtbr:idleLogout') === '1';
     if (idleLogout) {
       sessionStorage.removeItem('mtbr:idleLogout');
@@ -78,7 +95,9 @@
         return;
       }
       try {
-        location.href = App.startPage(await App.loadAccessContext(true));
+        const context = await App.loadAccessContext(true);
+        if (!context?.organization || !context?.subscription_valid) throw new Error('inactive_account');
+        location.href = safeReturn || App.startPage(context);
       } catch (_) {
         await App.sb.auth.signOut();
         errBox.textContent = 'الحساب غير مرتبط بجهة فعّالة. راجع مدير المنصة.';

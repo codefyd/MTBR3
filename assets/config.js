@@ -6,5 +6,6 @@
 window.APP_CONFIG = {
   SUPABASE_URL: 'https://gaermmsfbtfcghegdkmq.supabase.co',
   SUPABASE_KEY: 'sb_publishable_BGCMUi9fRMZ3lVJoWYXQhA_333Y0ywo',
+  MCP_PUBLIC_URL: 'https://mcp.faris0.vip/mcp',
   PAGE_SIZE: 50,
 };
