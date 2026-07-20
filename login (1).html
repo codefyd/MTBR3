@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data:; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://*.supabase.co wss://*.supabase.co; base-uri 'self'; form-action 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تسجيل الدخول | منصة ولاء</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div style="min-height:100vh;display:grid;place-items:center;padding:1.5rem">
+    <div class="panel fade-in" style="width:100%;max-width:420px;padding:2.5rem 2rem">
+      <div style="text-align:center;margin-bottom:1.75rem">
+        <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 1rem;background:var(--c-primary);color:var(--c-gold);display:grid;place-items:center;font-size:1.8rem;box-shadow:var(--shadow-md)">
+          <i class="fa-solid fa-hand-holding-heart"></i>
+        </div>
+        <h1 style="font-size:1.6rem;margin:0">ولاء</h1>
+        <p class="muted" style="margin:.4rem 0 0">منصة لتحليل المتبرعين</p>
+      </div>
+
+      <form id="loginForm">
+        <div style="margin-bottom:1rem">
+          <label class="lbl">البريد الإلكتروني</label>
+          <input type="email" id="email" class="field" required placeholder="admin@example.com" dir="ltr" />
+        </div>
+        <div style="margin-bottom:1.25rem">
+          <label class="lbl">كلمة المرور</label>
+          <input type="password" id="password" class="field" required placeholder="••••••••" dir="ltr" />
+        </div>
+        <div id="errBox" class="hidden" style="background:#f6e3e0;color:var(--c-danger);padding:.7rem 1rem;border-radius:var(--radius-sm);margin-bottom:1rem;font-size:.95rem"></div>
+        <button type="submit" id="loginBtn" class="btn-x" style="width:100%;justify-content:center">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i><span>دخول</span>
+        </button>
+      </form>
+      <p class="muted" style="text-align:center;margin-top:1.5rem;font-size:.85rem">
+       تسجيل الدخول للوحة الإدارة
+      </p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    const form = document.getElementById('loginForm');
+    const btn = document.getElementById('loginBtn');
+    const errBox = document.getElementById('errBox');
+
+    const params = new URLSearchParams(location.search);
+    const requestedReturn = params.get('return');
+    const safeReturn = (() => {
+      if (!requestedReturn) return '';
+      try {
+        const target = new URL(requestedReturn, location.origin);
+        if (target.origin !== location.origin || !target.pathname.endsWith('/oauth-consent.html')) return '';
+        return `${target.pathname}${target.search}`;
+      } catch (_) { return ''; }
+    })();
+
+    if (safeReturn) {
+      (async () => {
+        const { data } = await App.sb.auth.getSession();
+        if (!data.session) return;
+        const { error } = await App.sb.auth.getUser();
+        if (!error) location.replace(safeReturn);
+        else await App.sb.auth.signOut();
+      })();
+    } else {
+      App.guard('login');
+    }
+
+    const idleLogout = params.get('idle') === '1' || sessionStorage.getItem('mtbr:idleLogout') === '1';
+    if (idleLogout) {
+      sessionStorage.removeItem('mtbr:idleLogout');
+      errBox.textContent = 'تم تسجيل خروجك تلقائيًا بسبب الخمول لمدة 6 دقائق.';
+      errBox.classList.remove('hidden');
+      history.replaceState(null, '', location.pathname);
+    } else if (params.get('error')) {
+      errBox.textContent = params.get('error');
+      errBox.classList.remove('hidden');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errBox.classList.add('hidden');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-x"></span><span>جارٍ الدخول...</span>';
+      const { error } = await App.sb.auth.signInWithPassword({
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+      });
+      if (error) {
+        errBox.textContent = 'بيانات الدخول غير صحيحة. تأكد من البريد وكلمة المرور.';
+        errBox.classList.remove('hidden');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i><span>دخول</span>';
+        return;
+      }
+      try {
+        const context = await App.loadAccessContext(true);
+        if (!context?.organization || !context?.subscription_valid) throw new Error('inactive_account');
+        location.href = safeReturn || App.startPage(context);
+      } catch (_) {
+        await App.sb.auth.signOut();
+        errBox.textContent = 'الحساب غير مرتبط بجهة فعّالة. راجع مدير المنصة.';
+        errBox.classList.remove('hidden');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i><span>دخول</span>';
+      }
+    });
+  </script>
+</body>
+</html>
