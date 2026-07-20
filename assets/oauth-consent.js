@@ -20,7 +20,26 @@
     button.innerHTML = `<span class="spinner-x"></span><span>${App.esc(text)}</span>`;
   };
 
+  const returnToLogin = async () => {
+    try { await App.sb.auth.signOut(); } catch (_) {}
+    const returnPath = `${location.pathname}${location.search}`;
+    location.replace(`login.html?return=${encodeURIComponent(returnPath)}`);
+  };
+
+  async function ensureFreshSession() {
+    const { data: sessionData } = await App.sb.auth.getSession();
+    if (!sessionData.session) return false;
+    const { error: userError } = await App.sb.auth.getUser();
+    if (!userError) return true;
+    const { data: refreshed, error: refreshError } = await App.sb.auth.refreshSession();
+    return !refreshError && Boolean(refreshed.session);
+  }
+
   async function decide(allowed) {
+    if (!await ensureFreshSession()) {
+      await returnToLogin();
+      return;
+    }
     const button = allowed ? approve : deny;
     busy(button, allowed ? 'جارٍ السماح...' : 'جارٍ الرفض...');
     const action = allowed
@@ -40,10 +59,8 @@
       return;
     }
 
-    const { data: sessionData } = await App.sb.auth.getSession();
-    if (!sessionData.session) {
-      const returnPath = `${location.pathname}${location.search}`;
-      location.replace(`login.html?return=${encodeURIComponent(returnPath)}`);
+    if (!await ensureFreshSession()) {
+      await returnToLogin();
       return;
     }
 
