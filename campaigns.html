@@ -32,16 +32,26 @@
         <div class="content">
           <div class="panel fade-in" style="margin-bottom:1.5rem">
             <div class="panel-body">
+              <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:1rem;margin-bottom:1rem" class="campaign-upload-meta">
+                <div>
+                  <label class="lbl" for="uploadCampaignName">اسم الحملة</label>
+                  <input class="field" id="uploadCampaignName" placeholder="مثال: حملة الجمعة" autocomplete="off" />
+                </div>
+                <div>
+                  <label class="lbl" for="uploadTargetDate">تاريخ ووقت الاستهداف</label>
+                  <input class="field" id="uploadTargetDate" type="datetime-local" />
+                </div>
+              </div>
               <div class="dropzone" id="dz">
                 <i class="fa-solid fa-file-arrow-up"></i>
-                <div style="font-weight:700;font-size:1.1rem">رفع ملف مستهدفين (CSV)</div>
-                <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة المطلوبة: الجوال، اسم الحملة، تاريخ الاستهداف — يقبل ملفات CSV فقط</div>
-                <label style="display:flex;gap:.55rem;align-items:center;justify-content:center;margin-top:.9rem;cursor:pointer">
-                  <input type="checkbox" id="recalcAfterUpload" />
-                  <span class="muted">إعادة احتساب ملفات المتبرعين بعد الحفظ</span>
-                </label>
+                <div style="font-weight:700;font-size:1.1rem">اختر ملف أرقام الجوال (CSV)</div>
+                <div class="muted" style="font-size:.92rem;margin-top:.35rem">يكفي عمود واحد باسم «الجوال»، ويُقبل أيضًا ملف من عمود واحد بلا عنوان</div>
                 <input type="file" id="fileInput" accept=".csv" style="display:none" />
               </div>
+              <label style="display:flex;gap:.55rem;align-items:center;margin-top:.9rem;cursor:pointer;width:max-content;max-width:100%">
+                <input type="checkbox" id="recalcAfterUpload" />
+                <span class="muted">إعادة احتساب ملفات المتبرعين بعد الحفظ</span>
+              </label>
             </div>
           </div>
           <div class="panel fade-in">
@@ -53,6 +63,8 @@
           </div>
         </div>`;
       wireDropzone();
+      setDefaultTargetDate();
+      wireRecalcToggle();
       let t;
       document.getElementById('search').addEventListener('input', (e) => {
         clearTimeout(t); t = setTimeout(() => { search = e.target.value.trim(); page = 0; load(); }, 350);
@@ -62,15 +74,6 @@
     function wireDropzone() {
       const dz = document.getElementById('dz');
       const input = document.getElementById('fileInput');
-      const recalcToggle = document.getElementById('recalcAfterUpload');
-      if (recalcToggle) {
-        recalcToggle.checked = localStorage.getItem(CAMPAIGN_RECALC_KEY) === '1';
-        recalcToggle.addEventListener('click', (e) => e.stopPropagation());
-        recalcToggle.closest('label')?.addEventListener('click', (e) => e.stopPropagation());
-        recalcToggle.addEventListener('change', () => {
-          localStorage.setItem(CAMPAIGN_RECALC_KEY, recalcToggle.checked ? '1' : '0');
-        });
-      }
       dz.addEventListener('click', () => input.click());
       dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag'); });
       dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
@@ -78,30 +81,54 @@
       input.addEventListener('change', (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
     }
 
+    function wireRecalcToggle() {
+      const toggle = document.getElementById('recalcAfterUpload');
+      if (!toggle) return;
+      toggle.checked = localStorage.getItem(CAMPAIGN_RECALC_KEY) === '1';
+      toggle.addEventListener('change', () => localStorage.setItem(CAMPAIGN_RECALC_KEY, toggle.checked ? '1' : '0'));
+    }
+
+    function setDefaultTargetDate() {
+      const input = document.getElementById('uploadTargetDate');
+      if (!input || input.value) return;
+      const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+      input.value = now.toISOString().slice(0, 16);
+    }
+
     async function handleFile(file) {
       const dz = document.getElementById('dz');
+      const campaignName = document.getElementById('uploadCampaignName')?.value.trim() || '';
+      const targetDateRaw = document.getElementById('uploadTargetDate')?.value || '';
+      if (!campaignName) { App.toast('اكتب اسم الحملة قبل اختيار الملف.', 'err'); return; }
+      if (!targetDateRaw) { App.toast('حدد تاريخ ووقت الاستهداف قبل اختيار الملف.', 'err'); return; }
       dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ المعالجة وتحديث الملفات...</div><div class="muted">' + App.esc(file.name) + '</div>';
       try {
         const rows = await App.readCsv(file);
-        if (!rows.length) throw new Error('الملف فارغ');
+        let singleLinePhone = null;
+        if (!rows.length) {
+          const firstLine = (await file.text()).replace(/^\uFEFF/, '').split(/\r?\n/).find(line => line.trim());
+          if (firstLine && !/[;,\t]/.test(firstLine)) singleLinePhone = firstLine.trim();
+          else throw new Error('الملف فارغ أو لا يحتوي أرقامًا بعد الصف الأول');
+        }
 
         const PHONE_KEYS = ['الجوال', 'رقم الجوال', 'رقمالجوال', 'جوال', 'الهاتف', 'رقم الهاتف', 'رقمالهاتف', 'الموبايل', 'رقم الموبايل', 'mobile', 'phone', 'Phone', 'Mobile'];
-        const CAMPAIGN_KEYS = ['اسم الحملة', 'اسمالحملة', 'الحملة', 'campaign_name', 'campaign name', 'campaign'];
-        const DATE_KEYS = ['تاريخ الاستهداف', 'تاريخالاستهداف', 'التاريخ', 'target_date', 'target date', 'date'];
+        const headers = Object.keys(rows[0] || {});
+        const knownPhoneHeader = headers.find(h => PHONE_KEYS.includes(h));
+        const headerlessFirstPhone = singleLinePhone || (!knownPhoneHeader && headers.length === 1 ? headers[0] : null);
+        if (!knownPhoneHeader && !headerlessFirstPhone) {
+          throw new Error('اجعل الملف من عمود واحد فقط، أو سمِّ عمود الأرقام «الجوال».');
+        }
 
         const records = [];
         let skipped = 0;
-        let missingPhoneColumn = 0;
         const rejected = [];
         const filePhones = new Set(); // أرقام هذا الملف للتحديث التزايدي
+        const phoneValues = headerlessFirstPhone
+          ? [headerlessFirstPhone, ...(singleLinePhone ? [] : rows.map(row => row[headerlessFirstPhone]))]
+          : rows.map(row => row[knownPhoneHeader]);
 
-        for (const row of rows) {
-          const phoneRaw = App.pick(row, PHONE_KEYS);
-          const campaignName = App.pick(row, CAMPAIGN_KEYS);
-          const targetDateRaw = App.pick(row, DATE_KEYS);
-
+        for (const phoneRaw of phoneValues) {
           if (phoneRaw === null || phoneRaw === undefined || String(phoneRaw).trim() === '') {
-            missingPhoneColumn++;
             skipped++;
             continue;
           }
@@ -111,7 +138,7 @@
             skipped++;
             rejected.push({
               'الجوال كما ورد': String(phoneRaw),
-              'اسم الحملة': campaignName || '',
+              'اسم الحملة': campaignName,
               'سبب الرفض': norm.reason || 'رقم غير صالح',
             });
             continue;
@@ -120,14 +147,13 @@
           if (norm.phone) filePhones.add(norm.phone);
           records.push({
             phone_raw: String(phoneRaw),
-            campaign_name: campaignName || null,
+            campaign_name: campaignName,
             target_date: App.toISO(targetDateRaw),
           });
         }
 
         if (!records.length) {
-          const headers = Object.keys(rows[0] || {}).join('، ');
-          throw new Error(`لا توجد صفوف صالحة. تأكد من عمود الجوال. الأعمدة التي قرأها النظام: ${headers || 'لم يتم التعرف على أعمدة'}`);
+          throw new Error('لا توجد أرقام جوال صالحة في الملف.');
         }
 
         const inserted = await App.rpcInBatches('insert_campaign_targets', records);
@@ -154,12 +180,8 @@
     function resetDropzone() {
       const dz = document.getElementById('dz');
       dz.innerHTML = `<i class="fa-solid fa-file-arrow-up"></i>
-        <div style="font-weight:700;font-size:1.1rem">رفع ملف مستهدفين (CSV)</div>
-        <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة المطلوبة: الجوال، اسم الحملة، تاريخ الاستهداف — يقبل ملفات CSV فقط</div>
-        <label style="display:flex;gap:.55rem;align-items:center;justify-content:center;margin-top:.9rem;cursor:pointer">
-          <input type="checkbox" id="recalcAfterUpload" />
-          <span class="muted">إعادة احتساب ملفات المتبرعين بعد الحفظ</span>
-        </label>
+        <div style="font-weight:700;font-size:1.1rem">اختر ملف أرقام الجوال (CSV)</div>
+        <div class="muted" style="font-size:.92rem;margin-top:.35rem">يكفي عمود واحد باسم «الجوال»، ويُقبل أيضًا ملف من عمود واحد بلا عنوان</div>
         <input type="file" id="fileInput" accept=".csv" style="display:none" />`;
       wireDropzone();
     }
@@ -241,5 +263,8 @@
       });
     }
   </script>
+  <style>
+    @media (max-width: 680px) { .campaign-upload-meta { grid-template-columns:1fr !important; } }
+  </style>
 </body>
 </html>
