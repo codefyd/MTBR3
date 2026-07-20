@@ -60,9 +60,13 @@
     })();
 
     if (safeReturn) {
-      App.sb.auth.getSession().then(({ data }) => {
-        if (data.session) location.replace(safeReturn);
-      });
+      (async () => {
+        const { data } = await App.sb.auth.getSession();
+        if (!data.session) return;
+        const { error } = await App.sb.auth.getUser();
+        if (!error) location.replace(safeReturn);
+        else await App.sb.auth.signOut();
+      })();
     } else {
       App.guard('login');
     }
