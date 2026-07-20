@@ -254,16 +254,22 @@ async function audit(ctx: TokenContext, toolName: string | null, requestId: unkn
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get('origin')
   if (origin && !ALLOWED_ORIGINS.includes(origin)) return response(rpcError(null, -32003, 'Origin غير مسموح'), 403)
-  if (req.method === 'OPTIONS') return response(null, 204, {
-    'access-control-allow-origin': origin || 'null',
-    'access-control-allow-headers': 'authorization, content-type, mcp-protocol-version, mcp-session-id',
+  const corsHeaders = origin ? {
+    'access-control-allow-origin': origin,
+    'access-control-expose-headers': 'mcp-session-id',
+    'vary': 'Origin',
+  } : {}
+  const send = (body: unknown, status = 200, extra: Record<string,string> = {}) =>
+    response(body, status, { ...corsHeaders, ...extra })
+  if (req.method === 'OPTIONS') return send(null, 204, {
+    'access-control-allow-headers': 'authorization, content-type, accept, last-event-id, mcp-protocol-version, mcp-session-id',
     'access-control-allow-methods': 'POST, OPTIONS',
   })
-  if (req.method === 'GET' || req.method === 'DELETE') return response(null, 405, { allow: 'POST, OPTIONS' })
-  if (req.method !== 'POST') return response(rpcError(null, -32600, 'Method not allowed'), 405)
+  if (req.method === 'GET' || req.method === 'DELETE') return send(null, 405, { allow: 'POST, OPTIONS' })
+  if (req.method !== 'POST') return send(rpcError(null, -32600, 'Method not allowed'), 405)
 
   const ctx = await authenticate(req)
-  if (!ctx) return response(rpcError(null, -32001, 'مفتاح MCP غير صالح أو منتهي'), 401, {
+  if (!ctx) return send(rpcError(null, -32001, 'مفتاح MCP غير صالح أو منتهي'), 401, {
     'www-authenticate': 'Bearer realm="Walaa MCP"',
   })
 
@@ -271,21 +277,21 @@ Deno.serve(async (req: Request) => {
   let request: JsonRpcRequest = {}
   try {
     request = await req.json() as JsonRpcRequest
-    if (request.jsonrpc !== '2.0' || !request.method) return response(rpcError(request.id, -32600, 'Invalid Request'), 400)
+    if (request.jsonrpc !== '2.0' || !request.method) return send(rpcError(request.id, -32600, 'Invalid Request'), 400)
 
-    if (request.method.startsWith('notifications/')) return response(null, 202)
+    if (request.method.startsWith('notifications/')) return send(null, 202)
     if (request.method === 'initialize') {
       const requestedVersion = textArg(request.params?.protocolVersion)
       const negotiatedVersion = SUPPORTED_PROTOCOLS.includes(requestedVersion) ? requestedVersion : PROTOCOL_VERSION
-      return response(rpcResult(request.id, {
+      return send(rpcResult(request.id, {
       protocolVersion: negotiatedVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'walaa-donor-intelligence', title: 'ولاء لتحليل المتبرعين', version: '3.0.0' },
       instructions: 'بوابة قراءة وتحليل لبيانات الجمعية المرتبطة بالمفتاح. لا توفر أدوات حذف أو تعديل.',
       }))
     }
-    if (request.method === 'ping') return response(rpcResult(request.id, {}))
-    if (request.method === 'tools/list') return response(rpcResult(request.id, {
+    if (request.method === 'ping') return send(rpcResult(request.id, {}))
+    if (request.method === 'tools/list') return send(rpcResult(request.id, {
       tools: availableTools(ctx).map(({ page: _page, ...tool }) => tool),
     }))
     if (request.method === 'tools/call') {
@@ -293,26 +299,26 @@ Deno.serve(async (req: Request) => {
       const allowed = availableTools(ctx).some(tool => tool.name === name)
       if (!allowed) {
         await audit(ctx, name, request.id, 'denied', started, 'الأداة غير مسموحة')
-        return response(rpcError(request.id, -32601, 'الأداة غير موجودة أو غير مسموحة'), 403)
+        return send(rpcError(request.id, -32601, 'الأداة غير موجودة أو غير مسموحة'), 403)
       }
       const args = (request.params?.arguments && typeof request.params.arguments === 'object')
         ? request.params.arguments as Record<string,unknown> : {}
       try {
         const value = await callTool(ctx, name, args)
         await audit(ctx, name, request.id, 'success', started)
-        return response(rpcResult(request.id, asToolContent(value)))
+        return send(rpcResult(request.id, asToolContent(value)))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'تعذر تنفيذ الأداة'
         await audit(ctx, name, request.id, 'error', started, message)
-        return response(rpcResult(request.id, {
+        return send(rpcResult(request.id, {
           content: [{ type: 'text', text: message }], isError: true,
         }))
       }
     }
-    return response(rpcError(request.id, -32601, 'Method not found'), 404)
+    return send(rpcError(request.id, -32601, 'Method not found'), 404)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Parse error'
     await audit(ctx, null, request.id, 'error', started, message)
-    return response(rpcError(request.id, -32700, message), 400)
+    return send(rpcError(request.id, -32700, message), 400)
   }
 })

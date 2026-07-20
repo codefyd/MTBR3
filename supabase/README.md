@@ -2,9 +2,7 @@
 
 ## ترقية SaaS 3.0 للمشروع الحالي
 
-بعد نجاح ملفات تحليل الحملات حتى `campaign_analysis_v2_4_targets_delete_timeout_fix.sql`، شغّل:
-
-`saas_upgrade.sql`
+بعد نجاح ملفات تحليل الحملات حتى `campaign_analysis_v2_4_targets_delete_timeout_fix.sql`، شغّل ملفات مجلد `saas_steps` من `01` إلى `06` بالترتيب. النسخة المقسمة أنسب للـ SQL Editor وتمنع انقطاع الطلب الطويل.
 
 ثم انشر Edge Functions:
 

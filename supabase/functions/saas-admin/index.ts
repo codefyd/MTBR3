@@ -213,6 +213,43 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, id: insert.data.id, token, mcp_url: `${SUPABASE_URL}/functions/v1/mcp` }, 200, origin)
     }
 
+    if (action === 'test_mcp_connection') {
+      const token = requireText(body.token, 'مفتاح MCP')
+      if (!token.startsWith('wlmcp_') || token.length > 128) throw new Error('صيغة مفتاح MCP غير صحيحة')
+      const initialize = await fetch(`${SUPABASE_URL}/functions/v1/mcp`, {
+        method: 'POST',
+        headers: {
+          'authorization': `Bearer ${token}`,
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-11-25',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'initialize',
+          params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'walaa-admin-check', version: '1.0.0' } },
+        }),
+      })
+      const initBody = await initialize.json().catch(() => null) as Record<string, unknown> | null
+      if (!initialize.ok || !initBody || initBody.error) {
+        const rpcError = initBody?.error as Record<string, unknown> | undefined
+        throw new Error(String(rpcError?.message || `بوابة MCP أعادت HTTP ${initialize.status}`))
+      }
+      const toolsResponse = await fetch(`${SUPABASE_URL}/functions/v1/mcp`, {
+        method: 'POST',
+        headers: {
+          'authorization': `Bearer ${token}`,
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-11-25',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      })
+      const toolsBody = await toolsResponse.json().catch(() => null) as Record<string, unknown> | null
+      if (!toolsResponse.ok || !toolsBody || toolsBody.error) throw new Error(`تعذر جلب أدوات MCP (HTTP ${toolsResponse.status})`)
+      const result = toolsBody.result as Record<string, unknown> | undefined
+      const tools = Array.isArray(result?.tools) ? result.tools : []
+      const initResult = initBody.result as Record<string, unknown> | undefined
+      return json({ ok: true, protocol_version: initResult?.protocolVersion || null, tools_count: tools.length }, 200, origin)
+    }
+
     if (action === 'revoke_mcp_token') {
       const tokenId = requireText(body.token_id, 'معرف المفتاح')
       const update = await service.from('mcp_access_tokens').update({ revoked_at: new Date().toISOString() })
