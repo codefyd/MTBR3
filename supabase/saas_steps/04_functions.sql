@@ -124,6 +124,7 @@ returns integer
 language plpgsql
 security invoker
 set search_path = ''
+set statement_timeout = '45s'
 as $$
 declare
   v_org uuid := app_private.current_organization_id();
@@ -141,11 +142,100 @@ begin
 end;
 $$;
 
+create or replace function public.donor_rebuild_clear_chunk(p_limit integer default 5000)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+set statement_timeout = '30s'
+as $$
+declare
+  v_org uuid := app_private.current_organization_id();
+  v_deleted integer := 0;
+  v_has_more boolean := false;
+begin
+  if v_org is null then raise exception 'الحساب غير مرتبط بجمعية فعّالة'; end if;
+  p_limit := greatest(100, least(coalesce(p_limit, 5000), 10000));
+
+  with batch as materialized (
+    select k.organization_id, k.phone
+    from public.donor_rebuild_keys k
+    where k.organization_id = v_org
+    order by k.phone
+    limit p_limit
+  ), deleted as (
+    delete from public.donor_rebuild_keys k
+    using batch b
+    where k.organization_id = b.organization_id and k.phone = b.phone
+    returning 1
+  )
+  select count(*)::integer into v_deleted from deleted;
+
+  select exists (
+    select 1 from public.donor_rebuild_keys k where k.organization_id = v_org
+  ) into v_has_more;
+
+  return jsonb_build_object(
+    'deleted', coalesce(v_deleted, 0),
+    'has_more', coalesce(v_has_more, false)
+  );
+end;
+$$;
+
+create or replace function public.donor_rebuild_seed_chunk(
+  p_after text default null,
+  p_limit integer default 5000
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+set statement_timeout = '30s'
+as $$
+declare
+  v_org uuid := app_private.current_organization_id();
+  v_scanned integer := 0;
+  v_inserted integer := 0;
+  v_next_after text;
+begin
+  if v_org is null then raise exception 'الحساب غير مرتبط بجمعية فعّالة'; end if;
+  p_limit := greatest(100, least(coalesce(p_limit, 5000), 10000));
+
+  with batch as materialized (
+    select o.phone
+    from public.operations o
+    where o.organization_id = v_org
+      and o.phone is not null
+      and btrim(o.phone) <> ''
+      and (p_after is null or o.phone > p_after)
+    group by o.phone
+    order by o.phone
+    limit p_limit
+  ), inserted as (
+    insert into public.donor_rebuild_keys (organization_id, phone)
+    select v_org, b.phone from batch b
+    on conflict (organization_id, phone) do nothing
+    returning 1
+  )
+  select count(*)::integer, max(phone), (select count(*)::integer from inserted)
+  into v_scanned, v_next_after, v_inserted
+  from batch;
+
+  return jsonb_build_object(
+    'scanned', coalesce(v_scanned, 0),
+    'inserted', coalesce(v_inserted, 0),
+    'next_after', v_next_after,
+    'done', coalesce(v_scanned, 0) < p_limit
+  );
+end;
+$$;
+
 create or replace function public.donor_rebuild_start_for_phones(p_phones text[])
 returns integer
 language plpgsql
 security invoker
 set search_path = ''
+set statement_timeout = '30s'
 as $$
 declare
   v_org uuid := app_private.current_organization_id();
@@ -171,6 +261,7 @@ returns jsonb
 language plpgsql
 security invoker
 set search_path = ''
+set statement_timeout = '30s'
 as $$
 declare
   v_org uuid := app_private.current_organization_id();
@@ -408,6 +499,8 @@ grant execute on function public.mcp_organization_summary(uuid) to service_role;
 revoke execute on function public.upsert_operations(jsonb) from public, anon;
 revoke execute on function public.insert_campaign_targets(jsonb) from public, anon;
 revoke execute on function public.donor_rebuild_start() from public, anon;
+revoke execute on function public.donor_rebuild_clear_chunk(integer) from public, anon;
+revoke execute on function public.donor_rebuild_seed_chunk(text,integer) from public, anon;
 revoke execute on function public.donor_rebuild_chunk(integer,boolean) from public, anon;
 revoke execute on function public.donor_rebuild_start_for_phones(text[]) from public, anon;
 revoke execute on function public.save_monthly_target(text,numeric,text) from public, anon;
@@ -416,6 +509,8 @@ revoke execute on function public.save_referral_code_cost(text,numeric,text) fro
 grant execute on function public.upsert_operations(jsonb) to authenticated;
 grant execute on function public.insert_campaign_targets(jsonb) to authenticated;
 grant execute on function public.donor_rebuild_start() to authenticated;
+grant execute on function public.donor_rebuild_clear_chunk(integer) to authenticated;
+grant execute on function public.donor_rebuild_seed_chunk(text,integer) to authenticated;
 grant execute on function public.donor_rebuild_chunk(integer,boolean) to authenticated;
 grant execute on function public.donor_rebuild_start_for_phones(text[]) to authenticated;
 grant execute on function public.save_monthly_target(text,numeric,text) to authenticated;
@@ -424,5 +519,4 @@ grant execute on function public.save_referral_code_cost(text,numeric,text) to a
 
 
 commit;
-
 

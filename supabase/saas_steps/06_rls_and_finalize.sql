@@ -160,6 +160,7 @@ begin
     where n.nspname = 'public'
       and p.proname = any(array[
         'upsert_operations','insert_campaign_targets','donor_rebuild_start',
+        'donor_rebuild_clear_chunk','donor_rebuild_seed_chunk',
         'donor_rebuild_chunk','donor_rebuild_start_for_phones','recalculate_donors',
         'update_settings','compute_response_for_phones','dashboard_stats',
         'donors_total_sum','operations_projects','operations_year_summary','reports_stats',
@@ -184,4 +185,3 @@ commit;
 
 
 -- اكتملت ترقية SaaS 3.0.
-

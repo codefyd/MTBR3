@@ -344,7 +344,11 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-x" style="border-color:rgba(10,70,64,.3);border-top-color:var(--c-primary-dk)"></span> جارٍ الاحتساب...';
       try {
-        await App.rebuildDonorsInBatches(({ total, processed }) => {
+        await App.rebuildDonorsInBatches(({ phase, total, processed }) => {
+          if (phase === 'prepare') {
+            btn.innerHTML = '<span class="spinner-x" style="border-color:rgba(10,70,64,.3);border-top-color:var(--c-primary-dk)"></span> جارٍ تجهيز البيانات...';
+            return;
+          }
           const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 100;
           btn.innerHTML = `<span class="spinner-x" style="border-color:rgba(10,70,64,.3);border-top-color:var(--c-primary-dk)"></span> جارٍ الاحتساب... ${pct}%`;
         });

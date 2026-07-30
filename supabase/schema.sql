@@ -468,6 +468,7 @@ returns integer
 language plpgsql
 security definer
 set search_path = public
+set statement_timeout = '45s'
 as $$
 declare
   v_total integer;
@@ -484,12 +485,93 @@ begin
 end;
 $$;
 
+create or replace function public.donor_rebuild_clear_chunk(p_limit integer default 5000)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+set statement_timeout = '30s'
+as $$
+declare
+  v_deleted integer := 0;
+  v_has_more boolean := false;
+begin
+  p_limit := greatest(100, least(coalesce(p_limit, 5000), 10000));
+
+  with batch as materialized (
+    select k.phone
+    from public.donor_rebuild_keys k
+    order by k.phone
+    limit p_limit
+  ), deleted as (
+    delete from public.donor_rebuild_keys k
+    using batch b
+    where k.phone = b.phone
+    returning 1
+  )
+  select count(*)::integer into v_deleted from deleted;
+
+  select exists (select 1 from public.donor_rebuild_keys) into v_has_more;
+
+  return jsonb_build_object(
+    'deleted', coalesce(v_deleted, 0),
+    'has_more', coalesce(v_has_more, false)
+  );
+end;
+$$;
+
+create or replace function public.donor_rebuild_seed_chunk(
+  p_after text default null,
+  p_limit integer default 5000
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+set statement_timeout = '30s'
+as $$
+declare
+  v_scanned integer := 0;
+  v_inserted integer := 0;
+  v_next_after text;
+begin
+  p_limit := greatest(100, least(coalesce(p_limit, 5000), 10000));
+
+  with batch as materialized (
+    select o.phone
+    from public.operations o
+    where o.phone is not null
+      and btrim(o.phone) <> ''
+      and (p_after is null or o.phone > p_after)
+    group by o.phone
+    order by o.phone
+    limit p_limit
+  ), inserted as (
+    insert into public.donor_rebuild_keys (phone)
+    select b.phone from batch b
+    on conflict (phone) do nothing
+    returning 1
+  )
+  select count(*)::integer, max(phone), (select count(*)::integer from inserted)
+  into v_scanned, v_next_after, v_inserted
+  from batch;
+
+  return jsonb_build_object(
+    'scanned', coalesce(v_scanned, 0),
+    'inserted', coalesce(v_inserted, 0),
+    'next_after', v_next_after,
+    'done', coalesce(v_scanned, 0) < p_limit
+  );
+end;
+$$;
+
 
 create or replace function public.donor_rebuild_chunk(p_limit integer default 300, p_cleanup boolean default true)
 returns jsonb
 language plpgsql
 security definer
 set search_path = public
+set statement_timeout = '30s'
 as $$
 declare
   v_processed integer := 0;
@@ -695,6 +777,7 @@ returns integer
 language plpgsql
 security definer
 set search_path = public
+set statement_timeout = '30s'
 as $$
 declare
   v_total integer;
@@ -1343,6 +1426,10 @@ grant execute on function public.operation_phone_info(text, bigint, bigint) to a
 grant execute on function public.upsert_operations(jsonb) to authenticated;
 grant execute on function public.insert_campaign_targets(jsonb) to authenticated;
 grant execute on function public.donor_rebuild_start() to authenticated;
+revoke execute on function public.donor_rebuild_clear_chunk(integer) from public, anon;
+revoke execute on function public.donor_rebuild_seed_chunk(text, integer) from public, anon;
+grant execute on function public.donor_rebuild_clear_chunk(integer) to authenticated;
+grant execute on function public.donor_rebuild_seed_chunk(text, integer) to authenticated;
 grant execute on function public.donor_rebuild_chunk(integer, boolean) to authenticated;
 grant execute on function public.donor_rebuild_start_for_phones(text[]) to authenticated;
 grant execute on function public.recalculate_donors() to authenticated;

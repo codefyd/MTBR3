@@ -561,14 +561,74 @@ function downloadCsvSections(filename, sections) {
 }
 
 
+function isMissingRpc(error, functionName) {
+  const text = [error?.code, error?.message, error?.details, error?.hint]
+    .filter(Boolean)
+    .join(' ');
+  return error?.code === 'PGRST202'
+    || (text.includes(functionName) && /schema cache|could not find|not found/i.test(text));
+}
+
+// تجهيز طابور إعادة البناء على دفعات. في نسخة SaaS قد يتجاوز حذف/إدخال
+// عشرات آلاف الأرقام في donor_rebuild_start مهلة PostgREST ويظهر خطأ 500.
+async function prepareFullDonorRebuild(onProgress, seedBatchSize = 5000) {
+  const chunkLimit = Math.max(500, Math.min(10000, Number(seedBatchSize) || 5000));
+  let clearSafety = 0;
+
+  while (clearSafety < 100000) {
+    clearSafety++;
+    const { data, error } = await sb.rpc('donor_rebuild_clear_chunk', { p_limit: chunkLimit });
+
+    // توافق مع قواعد البيانات القديمة قبل تثبيت إصلاح التجهيز المرحلي.
+    if (error && clearSafety === 1 && isMissingRpc(error, 'donor_rebuild_clear_chunk')) {
+      const legacy = await sb.rpc('donor_rebuild_start');
+      if (legacy.error) throw legacy.error;
+      return Number(legacy.data || 0);
+    }
+    if (error) throw error;
+
+    if (typeof onProgress === 'function') {
+      onProgress({ phase: 'prepare', stage: 'clear', total: 0, processed: 0, remaining: 0 });
+    }
+    if (!data?.has_more) break;
+  }
+  if (clearSafety >= 100000) throw new Error('تعذر إنهاء تنظيف طابور إعادة الاحتساب.');
+
+  let after = null;
+  let total = 0;
+  let seedSafety = 0;
+
+  while (seedSafety < 100000) {
+    seedSafety++;
+    const { data, error } = await sb.rpc('donor_rebuild_seed_chunk', {
+      p_after: after,
+      p_limit: chunkLimit,
+    });
+    if (error) throw error;
+
+    const scanned = Number(data?.scanned || 0);
+    total += scanned;
+    if (typeof onProgress === 'function') {
+      onProgress({ phase: 'prepare', stage: 'seed', total, processed: 0, remaining: total });
+    }
+
+    if (data?.done || scanned === 0) break;
+    const nextAfter = data?.next_after == null ? '' : String(data.next_after);
+    if (!nextAfter || nextAfter === after) {
+      throw new Error('توقف تجهيز طابور إعادة الاحتساب قبل اكتماله.');
+    }
+    after = nextAfter;
+  }
+  if (seedSafety >= 100000) throw new Error('لم يكتمل تجهيز طابور إعادة الاحتساب بسبب تجاوز حد الأمان.');
+  return total;
+}
+
 // إعادة بناء ملفات المتبرعين على دفعات لتجنب timeout في Supabase/PostgREST
 async function rebuildDonorsInBatches(onProgress, batchSize = 300) {
-  const start = await sb.rpc('donor_rebuild_start');
-  if (start.error) throw start.error;
-  const total = Number(start.data || 0);
+  const total = await prepareFullDonorRebuild(onProgress);
   let remaining = total;
   let processed = 0;
-  if (typeof onProgress === 'function') onProgress({ total, processed, remaining });
+  if (typeof onProgress === 'function') onProgress({ phase: 'rebuild', total, processed, remaining });
 
   // حماية من حلقة لا نهائية لو رجعت الدالة نتيجة غير متوقعة
   let safety = 0;
@@ -579,7 +639,7 @@ async function rebuildDonorsInBatches(onProgress, batchSize = 300) {
     const stepProcessed = Number(data?.processed || 0);
     remaining = Number(data?.remaining || 0);
     processed += stepProcessed;
-    if (typeof onProgress === 'function') onProgress({ total, processed, remaining });
+    if (typeof onProgress === 'function') onProgress({ phase: 'rebuild', total, processed, remaining });
     if (stepProcessed === 0 && remaining > 0) {
       throw new Error('توقف احتساب ملفات المتبرعين قبل اكتمال الدفعات.');
     }
