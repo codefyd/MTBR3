@@ -402,14 +402,14 @@
       const area = document.getElementById('tableArea');
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
 
-      let q = App.sb.from('donors').select('phone,phone_raw,phone_status,phone_issue,donor_name,first_donation,last_donation,total_amount,donations_count,projects,status,category,sat_count,sun_count,mon_count,tue_count,wed_count,thu_count,fri_count,period_morning,period_noon,period_evening,period_night,no_time_count,targeted_count,last_targeted,responded,response_date,response_lag_days', { count:'estimated' })
+      let q = App.sb.from('donors').select('phone,phone_raw,phone_status,phone_issue,donor_name,first_donation,last_donation,total_amount,donations_count,projects,status,category,sat_count,sun_count,mon_count,tue_count,wed_count,thu_count,fri_count,period_morning,period_noon,period_evening,period_night,no_time_count,targeted_count,last_targeted,responded,response_date,response_lag_days', { count:'exact' })
         .order(sortCol, { ascending: sortAsc, nullsFirst: false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       q = buildQuery(q);
       const { data, count:c, error } = await q;
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
       count = c || 0;
-      document.getElementById('cnt').textContent = `(${App.fmtNum(count)} نتيجة تقريبية)`;
+      document.getElementById('cnt').textContent = `(${App.fmtNum(count)} متبرع)`;
 
       if (!data.length) {
         area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد ملفات متبرعين مطابقة.</div>';

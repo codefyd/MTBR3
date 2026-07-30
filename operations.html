@@ -2,6 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data:; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://*.supabase.co wss://*.supabase.co; base-uri 'self'; form-action 'self'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>العمليات | منصة ولاء</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet" />
@@ -11,8 +12,7 @@
 <body>
   <div class="app-shell" id="shell"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -51,9 +51,9 @@
                 <i class="fa-solid fa-file-arrow-up"></i>
                 <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CSV)</div>
                 <div class="muted" style="font-size:.92rem;margin-top:.35rem">
-                  الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت
+                  الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع/البيان، كود الإحالة/الإحالة#، القيمة، الكمية، المجموع، التاريخ، الوقت
                 </div>
-                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />
+                <input type="file" id="fileInput" accept=".csv" style="display:none" />
               </div>
             </div>
           </div>
@@ -91,7 +91,7 @@
       const dz = document.getElementById('dz');
       dz.innerHTML = '<div class="spinner-x spinner-dark" style="margin:0 auto .75rem;width:28px;height:28px"></div><div style="font-weight:700">جارٍ معالجة الملف وحفظ العمليات...</div><div class="muted">' + App.esc(file.name) + '</div>';
       try {
-        const rows = await App.readExcel(file);
+        const rows = await App.readCsv(file);
         if (!rows.length) throw new Error('الملف فارغ أو لا يحتوي بيانات');
 
         const records = [];
@@ -121,8 +121,8 @@
             line_no: lineNo, operation_no: opNo,
             donor_name: App.pick(row, ['الاسم']),
             phone_raw: phoneRaw != null ? String(phoneRaw) : null,
-            project: App.pick(row, ['المشروع']),
-            referral_code: App.pick(row, ['كود الإحالة', 'كودالإحالة']),
+            project: App.pick(row, ['المشروع', 'البيان']),
+            referral_code: App.pick(row, ['كود الإحالة', 'كودالإحالة', 'الإحالة#', '#الإحالة', 'الإحالة', 'احالة#', '#احالة', 'احالة']),
             value: App.toNum(App.pick(row, ['القيمة'])),
             quantity: App.toNum(App.pick(row, ['الكمية'])),
             total: App.toNum(App.pick(row, ['المجموع'])),
@@ -169,8 +169,8 @@
       const dz = document.getElementById('dz');
       dz.innerHTML = `<i class="fa-solid fa-file-arrow-up"></i>
         <div style="font-weight:700;font-size:1.1rem">رفع ملف عمليات (CSV)</div>
-        <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع، كود الإحالة، القيمة، الكمية، المجموع، التاريخ، الوقت</div>
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />`;
+        <div class="muted" style="font-size:.92rem;margin-top:.35rem">الأعمدة: رقم، #العملية، الاسم، الجوال، المشروع/البيان، كود الإحالة/الإحالة#، القيمة، الكمية، المجموع، التاريخ، الوقت</div>
+        <input type="file" id="fileInput" accept=".csv" style="display:none" />`;
       wireDropzone();
     }
 
@@ -178,7 +178,7 @@
       const area = document.getElementById('tableArea');
       area.innerHTML = '<div class="center-load"><div class="spinner-x spinner-dark" style="width:32px;height:32px"></div></div>';
 
-      let q = App.sb.from('operations').select('line_no,operation_no,donor_name,phone_raw,phone,phone_status,phone_issue,project,referral_code,value,quantity,total,op_datetime', { count: 'estimated' })
+      let q = App.sb.from('operations').select('line_no,operation_no,donor_name,phone_raw,phone,phone_status,phone_issue,project,referral_code,value,quantity,total,op_datetime', { count: 'exact' })
         .order('op_datetime', { ascending: false })
         .range(page * App.PAGE_SIZE, page * App.PAGE_SIZE + App.PAGE_SIZE - 1);
       if (search) {
@@ -188,11 +188,11 @@
       const { data, count: c, error } = await q;
       if (error) { area.innerHTML = `<div class="empty-state">${App.esc(error.message)}</div>`; return; }
       count = c || 0;
-      document.getElementById('cnt').textContent = `(${count.toLocaleString('en-US')} صف تقريبًا)`;
+      document.getElementById('cnt').textContent = `(${count.toLocaleString('en-US')} صف)`;
       loadLatestOperationAt();
 
       if (!data.length) {
-        area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد عمليات بعد. ابدأ برفع ملف Excel.</div>';
+        area.innerHTML = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i>لا توجد عمليات بعد. ابدأ برفع ملف CSV.</div>';
         return;
       }
 
@@ -258,7 +258,7 @@
       document.getElementById('next')?.addEventListener('click', () => { if (page + 1 < pages) { page++; load(); } });
     }
 
-    // تقرير أرقام الجوال بعد الرفع (نافذة + تصدير Excel)
+    // تقرير أرقام الجوال بعد الرفع (نافذة + تصدير CSV)
     function showPhoneReport(report) {
       const reviewRows = report.rows || [];
       const back = document.createElement('div');
@@ -291,17 +291,14 @@
             </table></div>` : '<div class="empty-state"><i class="fa-solid fa-circle-check"></i>كل الأرقام في الملف صحيحة.</div>'}
           </div>
           <div class="panel-head" style="border-top:1px solid var(--c-line);border-bottom:none;justify-content:flex-end">
-            <button class="btn-x btn-gold" id="phExport" ${reviewRows.length ? '' : 'disabled'}><i class="fa-solid fa-file-excel"></i> تصدير أرقام المراجعة</button>
+            <button class="btn-x btn-gold" id="phExport" ${reviewRows.length ? '' : 'disabled'}><i class="fa-solid fa-file-csv"></i> تصدير أرقام المراجعة CSV</button>
           </div>
         </div>`;
       document.body.appendChild(back);
       back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
       document.getElementById('phClose').addEventListener('click', () => back.remove());
       document.getElementById('phExport')?.addEventListener('click', () => {
-        const ws = window.XLSX.utils.json_to_sheet(reviewRows);
-        const wb = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(wb, ws, 'أرقام للمراجعة');
-        window.XLSX.writeFile(wb, `تقرير-أرقام-الجوال-${new Date().toISOString().slice(0,10)}.xlsx`);
+        App.downloadCsv(`تقرير-أرقام-الجوال-${new Date().toISOString().slice(0,10)}.csv`, reviewRows);
       });
     }
   </script>
